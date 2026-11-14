@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SOVEREIGN • Private 3D Sicbo Salon (AAA Showcase)</title>
+
+  <!-- Curated ThreeUI Typography (Lexend + Cormorant Garamond + JetBrains Mono) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@200;300;400;500;600&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,400;1,600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css">
+
+  <!-- 3D & Motion Dependencies -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+</head>
+<body>
+  <!-- Custom Interactive Double-Ring Cursor -->
+  <div id="cursorRing" class="cursor-ring">
+    <div class="cursor-ring-outer"></div>
+  </div>
+  <div id="cursorDot" class="cursor-dot"></div>
+
+  <!-- Fullscreen 100vw x 100vh 3D Sicbo Salon Stage -->
+  <div id="threeContainer" class="fullscreen-3d-stage"></div>
+
+  <!-- Subtle Film Grain & Atmospheric Vignette -->
+  <div class="ambient-vignette"></div>
+  <div class="film-grain"></div>
+
+  <!-- ThreeUI Architectural Hairline Guides & Ghost Wordmark -->
+  <div class="threeui-guides" aria-hidden="true">
+    <i style="left: 14%"></i>
+    <i style="left: 36%"></i>
+    <i style="left: 64%"></i>
+    <i style="left: 86%"></i>
+  </div>
+  <div class="threeui-ghost" aria-hidden="true">SOVEREIGN</div>
+
+  <!-- Technical Architectural Crosshairs (+) -->
+  <div class="hud-crosshair ch-1">+</div>
+  <div class="hud-crosshair ch-2">+</div>
+  <div class="hud-crosshair ch-3">+</div>
+
+  <!-- ==================== 1. TOP CENTER PILL NAVBAR (THREEUI DOCK MAGNIFICATION) ==================== -->
+  <header class="top-pill-nav" data-spec>
+    <button id="btnQuickTopRoll" class="pill-circle-icon" data-dock title="Lắc Xúc Xắc Ngay">🎲</button>
+
+    <!-- Dual Gameplay Mode Switcher -->
+    <div class="mode-switch-group" data-dock>
+      <button id="btnModeManual" class="pill-mode-btn active" title="Chế độ Tự Tay Lắc">🖐 TỰ LẮC</button>
+      <button id="btnModeLive" class="pill-mode-btn" title="Phòng Live Tự Động 15 giây/phiên">
+        <span>⚡ LIVE</span>
+        <span id="liveTimerBadge" class="live-timer-badge">15s</span>
+      </button>
+    </div>
+
+    <button id="btnOpenDrawer" class="pill-tab" data-dock>⛬ BÀN CƯỢC 180X</button>
+    <button id="btnOpenChronicles" class="pill-tab" data-dock>📜 CẦU DÂY &amp; FAIR</button>
+    <button id="btnTopup" class="pill-tab" data-dock>+5M CHIP</button>
+
+    <div class="pill-vault" data-dock>
+      <span class="vault-dot"></span>
+      <span id="userBalance">10,000,000</span>
+      <span class="vault-curr">₫</span>
+    </div>
+
+    <button id="btnAudioToggle" class="pill-enter-btn" data-dock>
+      <span class="audio-text">SOUND</span>
+    </button>
+  </header>
+
+  <!-- Center-Stage Live 15s Auto-Roll Floating HUD Banner -->
+  <div id="centerLiveBanner" class="center-live-banner">
+    <span class="live-pulse-beacon"></span>
+    <span id="centerLiveText" class="center-live-text">PHÒNG LIVE TỰ ĐỘNG • TỰ LẮC SAU <strong id="centerLiveSec">15s</strong></span>
+    <button id="btnCenterRollNow" class="btn-center-live-now">Lắc Ngay</button>
+  </div>
+
+  <!-- ==================== 2. LEFT EDITORIAL HERO, LIQUID-METAL CTA & MAIN BETTING ==================== -->
+  <aside class="editorial-left-wing">
+    <div class="editorial-top-cluster">
+      <div class="editorial-hero-block">
+        <h1 class="display-heading">
+          Step into<br>
+          the private salon
+        </h1>
+
+        <div class="editorial-sub-col">
+          <p class="editorial-lead">
+            Ba viên xúc xắc ngà voi phủ sứ bo góc thủ công, phản chiếu ánh sáng Studio HDRI và kiểm chứng công bằng SHA-256.
+          </p>
+
+          <!-- ThreeUI Authentic 5-Pass WebGL2 Liquid-Metal Dispersion CTA -->
+          <div class="hero-cta-row">
+            <div class="liquid-stage" data-liquid-metal="explore">
+              <div class="liquid-plate" data-spec></div>
+              <canvas class="liquid-fx" aria-hidden="true"></canvas>
+              <button id="btnRoll" class="liquid-button">
+                <span class="live-emerald-dot"></span>
+                <span id="btnRollLabel" class="btn-roll-label">Lắc Xúc Xắc</span>
+                <span id="currentWagerSummary" class="wager-tag">0 ₫</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pre-Roll Provably Fair SHA-256 Hash Strip & Live Countdown Progress -->
+      <div id="fairnessCommitBar" class="fairness-commit-bar" title="Nhấp để kiểm chứng mã băm SHA-256 Provably Fair">
+        <div class="fairness-bar-main">
+          <span class="fair-shield">🛡 SHA-256 COMMIT</span>
+          <code id="nextHashPreview" class="fair-hash-code">Đang tải mã Hash...</code>
+          <span id="nextNoncePreview" class="fair-nonce-tag">NONCE #1</span>
+        </div>
+        <div id="liveProgressTrack" class="live-progress-track">
+          <div id="liveProgressFill" class="live-progress-fill"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- X/Z Horizontal Squeeze Bowl Interactive Notification -->
+    <div id="squeezePrompt" class="squeeze-glass-toast">
+      <div class="squeeze-pulse-ring">🖐</div>
+      <div class="squeeze-copy">
+        <strong>NẶN BÁT 3D • TRƯỢT NGANG X/Z <em id="squeezePctLabel">0%</em></strong>
+        <span>Nhấp giữ &amp; kéo trượt bát sang ngang để hé mở khe sáng từng góc xúc xắc</span>
+      </div>
+      <button id="btnQuickOpen" class="btn-toast-action">Mở Ngay (Space)</button>
+    </div>
+
+    <!-- Sculptural Main Betting Gates (TÀI / XỈU / BÃO / CHẴN / LẺ) -->
+    <div class="sanctuary-bet-deck" data-spec>
+      <div class="deck-header-line">
+        <span class="micro-mono">01 / PRIMARY TABLE GATES</span>
+        <button id="btnExpandMatrix" class="btn-link-mono">+ Bàn Cược Đầy Đủ (Bão 1:180 &amp; Tổng Điểm) ↗</button>
+      </div>
+
+      <div class="primary-gates-row">
+        <!-- XỈU (4 - 10) -->
+        <div class="sculpt-gate gate-xiu bet-spot" data-bet="xiu">
+          <div class="gate-top">
+            <span class="kanji-watermark">SMALL • 4–10</span>
+            <span class="odds-micro">1 : 1</span>
+          </div>
+          <div class="gate-mid">
+            <h2 class="gate-title">XỈU</h2>
+            <span class="gate-sub">4 ĐẾN 10 ĐIỂM</span>
+          </div>
+          <div class="gate-bottom">
+            <span class="wager-chip-counter" id="wager_xiu"></span>
+            <div class="spot-chip-pile" id="chipPile_xiu"></div>
+          </div>
+        </div>
+
+        <!-- CENTER SPECIALS: BÃO & CHẴN/LẺ -->
+        <div class="sculpt-center-col">
+          <div class="sculpt-gate gate-bao bet-spot" data-bet="triple_any">
+            <div class="gate-top">
+              <span class="kanji-watermark">ANY TRIPLE</span>
+              <span class="odds-micro gold">1 : 30</span>
+            </div>
+            <div class="gate-mid">
+              <h3 class="gate-title-sm">BÃO BẤT KỲ</h3>
+              <span class="gate-sub">Bộ 3 đồng nhất</span>
+            </div>
+            <span class="wager-chip-counter" id="wager_triple_any"></span>
+            <div class="spot-chip-pile" id="chipPile_triple_any"></div>
+          </div>
+
+          <div class="sculpt-parity-pair">
+            <div class="sculpt-gate gate-mini bet-spot" data-bet="even">
+              <span class="mini-name">CHẴN</span>
+              <span class="mini-odds">1:1</span>
+              <span class="wager-chip-counter" id="wager_even"></span>
+              <div class="spot-chip-pile" id="chipPile_even"></div>
+            </div>
+            <div class="sculpt-gate gate-mini bet-spot" data-bet="odd">
+              <span class="mini-name">LẺ</span>
+              <span class="mini-odds">1:1</span>
+              <span class="wager-chip-counter" id="wager_odd"></span>
+              <div class="spot-chip-pile" id="chipPile_odd"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TÀI (11 - 17) -->
+        <div class="sculpt-gate gate-tai bet-spot" data-bet="tai">
+          <div class="gate-top">
+            <span class="kanji-watermark">BIG • 11–17</span>
+            <span class="odds-micro">1 : 1</span>
+          </div>
+          <div class="gate-mid">
+            <h2 class="gate-title">TÀI</h2>
+            <span class="gate-sub">11 ĐẾN 17 ĐIỂM</span>
+          </div>
+          <div class="gate-bottom">
+            <span class="wager-chip-counter" id="wager_tai"></span>
+            <div class="spot-chip-pile" id="chipPile_tai"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ==================== 3. RIGHT OVERLAPPING ALABASTER CARDS (3D COUNTER-PARALLAX) ==================== -->
+  <aside class="editorial-right-wing">
+    <!-- Technical Salon Telemetry -->
+    <button id="btnTelemetryFair" class="telemetry-annotation" title="Mở Trình Kiểm Chứng SHA-256">
+      <span class="crosshair-icon">⊗</span>
+      <div class="telemetry-text">
+        <span class="tel-label">Provably Fair SHA-256 • Verified</span>
+        <strong class="tel-val" id="roundCounterLabel">MACAU VIP • #1032</strong>
+      </div>
+    </button>
+
+    <!-- CARD 1: Upper Alabaster Card (Macro Sicbo Visual + 3D Counter-Parallax Window) -->
+    <div id="resultBanner" class="alabaster-card card-ethos">
+      <div class="photo-window sicbo-macro-art">
+        <div class="portal-media">
+          <svg class="macro-svg-art" viewBox="0 0 400 180" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <radialGradient id="velvetGrad" cx="50%" cy="50%" r="70%">
+                <stop offset="0%" stop-color="#1d382d"/>
+                <stop offset="65%" stop-color="#111d19"/>
+                <stop offset="100%" stop-color="#0a0e0d"/>
+              </radialGradient>
+              <linearGradient id="goldLine" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#f3d8b6" stop-opacity="0.72"/>
+                <stop offset="100%" stop-color="#b88a58" stop-opacity="0.16"/>
+              </linearGradient>
+            </defs>
+            <rect width="400" height="180" fill="url(#velvetGrad)"/>
+            <circle cx="200" cy="190" r="145" fill="none" stroke="url(#goldLine)" stroke-width="1"/>
+            <circle cx="200" cy="190" r="105" fill="none" stroke="url(#goldLine)" stroke-width="0.75" stroke-dasharray="4 6"/>
+            <line x1="30" y1="90" x2="370" y2="90" stroke="url(#goldLine)" stroke-width="0.5"/>
+            <g transform="translate(152, 42)">
+              <rect x="0" y="10" width="44" height="44" rx="10" fill="#f7f4ed" stroke="#d5cbb8" stroke-width="1.5"/>
+              <circle cx="22" cy="32" r="7.5" fill="#cc293e"/>
+            </g>
+            <g transform="translate(206, 34) rotate(12)">
+              <rect x="0" y="10" width="44" height="44" rx="10" fill="#f2ece0" stroke="#d5cbb8" stroke-width="1.5"/>
+              <circle cx="13" cy="23" r="4.2" fill="#cc293e"/>
+              <circle cx="31" cy="23" r="4.2" fill="#cc293e"/>
+              <circle cx="13" cy="41" r="4.2" fill="#cc293e"/>
+              <circle cx="31" cy="41" r="4.2" fill="#cc293e"/>
+            </g>
+          </svg>
+        </div>
+
+        <div class="photo-badge-overlay">
+          <span id="resBadgeOutcome" class="outcome-pill">TÀI • 15</span>
+          <span id="resBadgeTotal" class="points-pill">4-5-6</span>
+        </div>
+      </div>
+
+      <div class="alabaster-body">
+        <span class="card-eyebrow">Live Oracle • Quẻ Vừa Mở</span>
+        <h3 class="card-editorial-title" id="resWinText">Sẵn sàng mở bát.</h3>
+        <div class="dice-mini-showcase" id="resDiceStrip">
+          <span>⚃</span><span>⚄</span><span>⚅</span>
+        </div>
+        <button id="btnCardRollTrigger" class="card-corner-arrow" title="Lắc Xúc Xắc Ngay">↗</button>
+      </div>
+    </div>
+
+    <!-- CARD 2: Lower Overlapping Alabaster Card (Bảng Soi Cầu Macau + 3D Counter-Parallax) -->
+    <div class="alabaster-card card-fieldnote">
+      <div class="alabaster-header-row">
+        <div>
+          <span class="card-eyebrow">Roadmap 07 • Soi Cầu Macau</span>
+          <div class="card-road-title-row">
+            <h3 class="card-editorial-title" id="cardRoadTitle">Biểu Đồ Cầu Hạt</h3>
+            <div class="card-road-switch">
+              <button id="btnSwitchBead" class="road-sw-btn active" type="button">Cầu Hạt</button>
+              <button id="btnSwitchBigRoad" class="road-sw-btn" type="button">Cầu Dây</button>
+            </div>
+          </div>
+        </div>
+        <div class="mini-stats-pills">
+          <span class="stat-dot-pill tai">Tài <strong id="statTaiCount">18</strong> (<span id="statTaiPct">50%</span>)</span>
+          <span class="stat-dot-pill xiu">Xỉu <strong id="statXiuCount">17</strong> (<span id="statXiuPct">50%</span>)</span>
+          <span class="stat-dot-pill bao">Bão <strong id="statTripleCount">1</strong></span>
+        </div>
+      </div>
+
+      <div class="photo-window photo-bottom">
+        <div class="portal-media">
+          <svg class="macro-svg-art" viewBox="0 0 400 180" xmlns="http://www.w3.org/2000/svg">
+            <rect width="400" height="180" fill="#141318"/>
+            <path d="M 0 45 L 400 45 M 0 90 L 400 90 M 0 135 L 400 135" stroke="rgba(232,199,166,0.09)" stroke-width="1"/>
+            <path d="M 60 0 L 60 180 M 120 0 L 120 180 M 180 0 L 180 180 M 240 0 L 240 180 M 300 0 L 300 180 M 360 0 L 360 180" stroke="rgba(232,199,166,0.09)" stroke-width="1"/>
+            <path d="M 10 130 Q 90 50, 170 95 T 330 60 T 395 85" fill="none" stroke="rgba(232,199,166,0.32)" stroke-width="1.5"/>
+          </svg>
+        </div>
+        <div class="roadmap-glass-overlay">
+          <div class="pearl-matrix" id="roadmapMatrix"></div>
+          <div class="card-bigroad-matrix hidden" id="cardBigRoadMatrix"></div>
+        </div>
+      </div>
+
+      <div class="card-footer-actions">
+        <span id="miniStreakHint" class="mini-streak-hint">Đang phân tích cầu...</span>
+        <button id="btnCardOpenBigRoad" class="btn-card-micro">Phóng To Cầu &amp; Fair ↗</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ==================== 4. BOTTOM FLOATING HUD & CHIP DOCK ==================== -->
+  <footer class="bottom-hud-bar">
+    <!-- Left Telemetry & FPS -->
+    <div class="hud-left-meta">
+      <span id="hudFps" class="fps-badge">60 FPS</span>
+      <label class="squeeze-toggle-pill" title="Bật để tự tay kéo trượt nắp bát 3D sau khi lắc">
+        <input type="checkbox" id="chkSqueeze">
+        <span class="toggle-dot"></span>
+        <span>Nặn Bát 3D</span>
+      </label>
+      <span id="statusPill" class="hud-status-text">Sẵn sàng. Chọn phỉnh và đặt vào cửa cược.</span>
+    </div>
+
+    <!-- Center Tactile Ceramic Chips & Quick Actions -->
+    <div class="hud-center-dock" data-spec>
+      <div class="chips-palette" id="chipsSelector">
+        <div class="zen-chip active" data-val="10000">10K</div>
+        <div class="zen-chip" data-val="50000">50K</div>
+        <div class="zen-chip" data-val="100000">100K</div>
+        <div class="zen-chip" data-val="500000">500K</div>
+        <div class="zen-chip" data-val="1000000">1M</div>
+        <div class="zen-chip" data-val="5000000">5M</div>
+        <div class="zen-chip chip-allin" id="chipAllIn">ALL</div>
+      </div>
+
+      <div class="dock-divider"></div>
+
+      <div class="quick-bet-actions">
+        <button id="btnClear" class="btn-hud-minimal">Hủy</button>
+        <button id="btnDouble" class="btn-hud-minimal">x2</button>
+        <button id="btnRebet" class="btn-hud-minimal">Cược Lại</button>
+      </div>
+    </div>
+
+    <!-- Right Sound Equalizer Bars & Table Code -->
+    <div class="hud-right-eq">
+      <div class="eq-bars">
+        <span></span><span></span><span></span><span></span>
+      </div>
+      <span id="hudModeLabel" class="eq-coord">MANUAL • VIP 08</span>
+    </div>
+  </footer>
+
+  <!-- ==================== 5. EXPANDABLE FULL 180X BETTING MATRIX DRAWER ==================== -->
+  <div id="fullMatrixModal" class="matrix-drawer-backdrop">
+    <div class="matrix-drawer-card">
+      <div class="drawer-header">
+        <div>
+          <span class="micro-mono">ADVANCED SICBO MATRIX</span>
+          <h3>Bàn Cược Chi Tiết • Bão Cụ Thể (1:180) &amp; Tổng Điểm</h3>
+        </div>
+        <button id="btnCloseDrawer" class="btn-close-drawer">✕ Đóng</button>
+      </div>
+
+      <!-- Bão cụ thể -->
+      <div class="drawer-section">
+        <span class="drawer-label">BÃO CỤ THỂ (ĐẶT 1 ĂN 180)</span>
+        <div class="specific-triples-matrix">
+          <div class="bet-spot mini-card" data-bet="triple_1">⚀ ⚀ ⚀<span>1-1-1</span><div class="spot-chip-pile" id="chipPile_triple_1"></div><div class="wager-chip-counter" id="wager_triple_1"></div></div>
+          <div class="bet-spot mini-card" data-bet="triple_2">⚁ ⚁ ⚁<span>2-2-2</span><div class="spot-chip-pile" id="chipPile_triple_2"></div><div class="wager-chip-counter" id="wager_triple_2"></div></div>
+          <div class="bet-spot mini-card" data-bet="triple_3">⚂ ⚂ ⚂<span>3-3-3</span><div class="spot-chip-pile" id="chipPile_triple_3"></div><div class="wager-chip-counter" id="wager_triple_3"></div></div>
+          <div class="bet-spot mini-card" data-bet="triple_4">⚃ ⚃ ⚃<span>4-4-4</span><div class="spot-chip-pile" id="chipPile_triple_4"></div><div class="wager-chip-counter" id="wager_triple_4"></div></div>
+          <div class="bet-spot mini-card" data-bet="triple_5">⚄ ⚄ ⚄<span>5-5-5</span><div class="spot-chip-pile" id="chipPile_triple_5"></div><div class="wager-chip-counter" id="wager_triple_5"></div></div>
+          <div class="bet-spot mini-card" data-bet="triple_6">⚅ ⚅ ⚅<span>6-6-6</span><div class="spot-chip-pile" id="chipPile_triple_6"></div><div class="wager-chip-counter" id="wager_triple_6"></div></div>
+        </div>
+      </div>
+
+      <!-- Tổng điểm 4 - 17 -->
+      <div class="drawer-section">
+        <span class="drawer-label">TỔNG ĐIỂM CHÍNH XÁC (4 ĐẾN 17 ĐIỂM)</span>
+        <div class="totals-minimal-row">
+          <div class="bet-spot total-bead" data-bet="total_4"><span class="sum">4</span><span class="rate">1:60</span><div class="spot-chip-pile" id="chipPile_total_4"></div><div class="wager-chip-counter" id="wager_total_4"></div></div>
+          <div class="bet-spot total-bead" data-bet="total_5"><span class="sum">5</span><span class="rate">1:30</span><div class="spot-chip-pile" id="chipPile_total_5"></div><div class="wager-chip-counter" id="wager_total_5"></div></div>
+          <div class="bet-spot total-bead" data-bet="total_6"><span class="sum">6</span><span class="rate">1:18</span><div class="spot-chip-pile" id="chipPile_total_6"></div><div class="wager-chip-counter" id="wager_total_6"></div></div>
+          <div class="bet-spot total-bead" data-bet="total_7"><span class="sum">7</span><span class="rate">1:12</span><div class="spot-chip-pile" id="chipPile_total_7"></div><div class="wager-chip-counter" id="wager_total_7"></div></div>
+          <div class="bet-spot total-bead" data-bet="total_8"><span class="sum">8</span><span class="rate">1:8</span><div class="spot-chip-pile" id="chipPile_total_8"></div><div class="wager-chip-counter" id="wager_total_8"></div></div>
+          <div class="bet-spot total-bead" data-bet="total_9"><span class="sum">9</span><span class="rate">1:6</span><div class="spot-chip-pile" id="chipPile_total_9"></div><div class="wager-chip-counter" id="wager_total_9"></div></div>
+          <div class="bet-spot total-bead" data-bet="total_10"><span class="sum">10</span><span class="rate">1:6</span><div class="spot-chip-pile" id="chipPile_total_10"></div><div class="wager-chip-counter" id="wager_total_10"></div></div>
+          <div class="bet-spot total-bead" data-bet="total_11"><span class="sum">11</span><span class="rate">1:6</span><div class="spot-chip-pile" id="chipPile_total_11"></div><div class="wager-chip-counter" id="wager_total_11"></div></div>
+          <div class="bet-spot total-bead" data-bet="total_12"><span class="sum">12</span><span class="rate">1:6</span><div class="spot-chip-pile" id="chipPile_total_12"></div><div class="wager-chip-counter" id="wager_total_12"></div></div>
+          <div class="bet-spot total-bead" data-bet="total_13"><span class="sum">13</span><span class="rate">1:8</span><div class="spot-chip-pile" id="chipPile_total_13"></div><div class="wager-chip-counter" id="wager_total_13"></div></div>
+          <div class="bet-spot total-bead" data-bet="total_14"><span class="sum">14</span><span class="rate">1:12</span><div class="spot-chip-pile" id="chipPile_total_14"></div><div class="wager-chip-counter" id="wager_total_14"></div></div>
+          <div class="bet-spot total-bead" data-bet="total_15"><span class="sum">15</span><span class="rate">1:18</span><div class="spot-chip-pile" id="chipPile_total_15"></div><div class="wager-chip-counter" id="wager_total_15"></div></div>
+          <div class="bet-spot total-bead" data-bet="total_16"><span class="sum">16</span><span class="rate">1:30</span><div class="spot-chip-pile" id="chipPile_total_16"></div><div class="wager-chip-counter" id="wager_total_16"></div></div>
+          <div class="bet-spot total-bead" data-bet="total_17"><span class="sum">17</span><span class="rate">1:60</span><div class="spot-chip-pile" id="chipPile_total_17"></div><div class="wager-chip-counter" id="wager_total_17"></div></div>
+        </div>
+      </div>
+
+      <!-- Cược đơn mặt xúc xắc -->
+      <div class="drawer-section">
+        <span class="drawer-label">ĐƠN XÚC XẮC (TRÚNG 1 ĂN 1 • 2 ĂN 2 • 3 ĂN 3)</span>
+        <div class="single-pips-row">
+          <div class="bet-spot pip-card" data-bet="single_1">⚀ Nhất<div class="spot-chip-pile" id="chipPile_single_1"></div><div class="wager-chip-counter" id="wager_single_1"></div></div>
+          <div class="bet-spot pip-card" data-bet="single_2">⚁ Nhị<div class="spot-chip-pile" id="chipPile_single_2"></div><div class="wager-chip-counter" id="wager_single_2"></div></div>
+          <div class="bet-spot pip-card" data-bet="single_3">⚂ Tam<div class="spot-chip-pile" id="chipPile_single_3"></div><div class="wager-chip-counter" id="wager_single_3"></div></div>
+          <div class="bet-spot pip-card" data-bet="single_4">⚃ Tứ<div class="spot-chip-pile" id="chipPile_single_4"></div><div class="wager-chip-counter" id="wager_single_4"></div></div>
+          <div class="bet-spot pip-card" data-bet="single_5">⚄ Ngũ<div class="spot-chip-pile" id="chipPile_single_5"></div><div class="wager-chip-counter" id="wager_single_5"></div></div>
+          <div class="bet-spot pip-card" data-bet="single_6">⚅ Lục<div class="spot-chip-pile" id="chipPile_single_6"></div><div class="wager-chip-counter" id="wager_single_6"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 6. CHRONICLES DRAWER: BIG ROAD (CẦU DÂY), PERSONAL LEDGER & PROVABLY FAIR SHA-256 ==================== -->
+  <div id="chroniclesModal" class="matrix-drawer-backdrop">
+    <div class="matrix-drawer-card chronicles-card">
+      <div class="drawer-header">
+        <div>
+          <span class="micro-mono">MACAU VIP ANALYTICS &amp; CRYPTOGRAPHIC AUDIT</span>
+          <h3>Bảng Cầu Dây (Big Road) • Lịch Sử Cược &amp; Provably Fair SHA-256</h3>
+        </div>
+        <button id="btnCloseChronicles" class="btn-close-drawer">✕ Đóng</button>
+      </div>
+
+      <!-- Drawer Tabs -->
+      <div class="chronicles-tabs">
+        <button class="chron-tab active" data-tab="tabBigRoad">01 • Bảng Cầu Dây (Big Road)</button>
+        <button class="chron-tab" data-tab="tabPersonal">02 • Lịch Sử Cược Cá Nhân</button>
+        <button class="chron-tab" data-tab="tabFairness">03 • Kiểm Chứng SHA-256</button>
+      </div>
+
+      <!-- TAB 1: BIG ROAD (CẦU DÂY MACAU) -->
+      <div id="tabBigRoad" class="chron-pane active">
+        <div class="bigroad-summary-bar">
+          <span id="bigRoadPatternBadge" class="pattern-badge">Đang đọc cầu Macau...</span>
+          <div class="bigroad-legend">
+            <span><i class="ring-legend tai"></i> Tài (11–17)</span>
+            <span><i class="ring-legend xiu"></i> Xỉu (4–10)</span>
+            <span><i class="ring-legend triple"></i> Bão (Triple)</span>
+          </div>
+        </div>
+
+        <div class="bigroad-scroll-wrap">
+          <div id="bigRoadGrid" class="bigroad-grid"></div>
+        </div>
+
+        <div class="drawer-section" style="margin-top: 12px;">
+          <span class="drawer-label">BẢNG CẦU HẠT CHÂU CHI TIẾT (60 PHIÊN GẦN NHẤT)</span>
+          <div id="fullBeadGrid" class="full-bead-grid"></div>
+        </div>
+      </div>
+
+      <!-- TAB 2: PERSONAL BETTING LEDGER -->
+      <div id="tabPersonal" class="chron-pane">
+        <div class="ledger-kpi-row">
+          <div class="ledger-kpi">
+            <span>Tổng Phiên Đã Cược</span>
+            <strong id="kpiTotalRounds">0</strong>
+          </div>
+          <div class="ledger-kpi">
+            <span>Phiên Thắng</span>
+            <strong id="kpiWinRounds">0</strong>
+          </div>
+          <div class="ledger-kpi">
+            <span>Tổng Vốn Luân Chuyển</span>
+            <strong id="kpiTotalWagered">0 ₫</strong>
+          </div>
+        </div>
+
+        <div class="ledger-table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Phiên</th>
+                <th>Thời gian</th>
+                <th>Kết quả</th>
+                <th>Cửa đặt</th>
+                <th>Tổng cược</th>
+                <th>Lãi / Lỗ</th>
+                <th>Audit</th>
+              </tr>
+            </thead>
+            <tbody id="personalLedgerBody">
+              <tr>
+                <td colspan="7" class="empty-ledger-cell">Chưa có phiên cược cá nhân nào. Hãy đặt phỉnh và lắc xúc xắc!</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TAB 3: PROVABLY FAIR SHA-256 COMMIT-REVEAL VERIFIER -->
+      <div id="tabFairness" class="chron-pane">
+        <div class="fairness-grid-2col">
+          <!-- Left: Active Pre-Commit for Upcoming Round -->
+          <div class="fair-box">
+            <span class="drawer-label">1. CAM KẾT PHIÊN SẮP LẮC (PRE-COMMIT)</span>
+            <p class="fair-desc">
+              Trước mỗi lần lắc, Server tạo trước <code>Server Seed</code> bí mật và công bố mã băm <code>SHA-256</code> không thể thay đổi. Bạn có thể tự đặt <code>Client Seed</code> của riêng mình:
+            </p>
+            <div class="fair-field">
+              <label>Next Server Seed Hash (SHA-256 đã khóa trước khi lắc)</label>
+              <div class="fair-copy-row">
+                <input id="inputNextHash" type="text" readonly value="">
+                <button id="btnCopyNextHash" class="btn-fair-sm">Copy</button>
+              </div>
+            </div>
+            <div class="fair-field-row">
+              <div class="fair-field">
+                <label>Client Seed của bạn (Tùy chỉnh tự do)</label>
+                <input id="inputClientSeed" type="text" value="sovereign-vip-888">
+              </div>
+              <div class="fair-field fair-field-narrow">
+                <label>Next Nonce</label>
+                <input id="inputNextNonce" type="text" readonly value="1">
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Revealed Seed & Independent SHA-256 Verifier -->
+          <div class="fair-box">
+            <span class="drawer-label">2. KIỂM CHỨNG ĐỘC LẬP SAU KHI MỞ BÁT (VERIFY)</span>
+            <div class="fair-field">
+              <label>Revealed Server Seed (Mở khóa sau phiên cược)</label>
+              <input id="verifyServerSeed" type="text" placeholder="Server Seed sẽ hiển thị ngay sau khi mở bát...">
+            </div>
+            <div class="fair-field">
+              <label>Committed SHA-256 Hash (Đối chiếu cam kết)</label>
+              <input id="verifyExpectedHash" type="text" placeholder="Mã SHA-256 đã công bố trước phiên...">
+            </div>
+            <div class="fair-field-row">
+              <div class="fair-field">
+                <label>Client Seed</label>
+                <input id="verifyClientSeed" type="text" value="sovereign-vip-888">
+              </div>
+              <div class="fair-field fair-field-narrow">
+                <label>Nonce</label>
+                <input id="verifyNonce" type="number" value="1">
+              </div>
+            </div>
+            <button id="btnRunVerify" class="btn-run-verify">🛡 Kiểm Chứng Thuật Toán SHA-256 &amp; Xúc Xắc</button>
+            <div id="verifyResultBox" class="verify-result-box">
+              Hoàn tất 1 phiên mở bát hoặc nhập Seed bất kỳ để kiểm chứng toán học.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="audio.js"></script>
+  <script src="three-engine.js"></script>
+  <script src="threeui-fx.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
