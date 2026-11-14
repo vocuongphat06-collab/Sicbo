@@ -1,7 +1,10 @@
 // app.js - SOVEREIGN Private 3D Sicbo Salon Master Controller (AAA Showcase)
 document.addEventListener('DOMContentLoaded', () => {
-  // Automatically connect to Express server on :3000 even if opened via Antigravity Live Server (:5500)
-  const API_BASE = (window.location.port === '3000') ? '' : 'http://localhost:3000';
+  // Automatically connect to Express server on :3000 if opened via local Live Server (e.g. :5500), otherwise use same-origin
+  const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const API_BASE = (isLocalHost && window.location.port && window.location.port !== '3000')
+    ? 'http://localhost:3000'
+    : '';
 
   // Generate 36 realistic Macau rounds synchronously so Roadmap & Big Road are NEVER empty
   function createInitialHistory() {

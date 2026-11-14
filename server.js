@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 
@@ -11,7 +12,10 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-const DATA_DIR = path.join(__dirname, 'data');
+// Vercel Serverless Functions only allow writes inside os.tmpdir() (/tmp)
+const DATA_DIR = process.env.VERCEL
+  ? path.join(os.tmpdir(), 'sicbo-data')
+  : path.join(__dirname, 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
 const PERSONAL_FILE = path.join(DATA_DIR, 'personal_history.json');
@@ -419,10 +423,14 @@ app.post('/api/roll', (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`\n======================================================`);
-  console.log(`🎲 SOVEREIGN • PRIVATE 3D SICBO SALON (AAA SHOWCASE)`);
-  console.log(`🛡  Provably Fair SHA-256 Commit-Reveal Engine Active`);
-  console.log(`🚀 Open browser at: http://localhost:${PORT}`);
-  console.log(`======================================================\n`);
-});
+if (require.main === module && !process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`\n======================================================`);
+    console.log(`🎲 SOVEREIGN • PRIVATE 3D SICBO SALON (AAA SHOWCASE)`);
+    console.log(`🛡  Provably Fair SHA-256 Commit-Reveal Engine Active`);
+    console.log(`🚀 Open browser at: http://localhost:${PORT}`);
+    console.log(`======================================================\n`);
+  });
+}
+
+module.exports = app;
