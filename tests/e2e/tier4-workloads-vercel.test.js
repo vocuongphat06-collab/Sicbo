@@ -8,6 +8,7 @@ const path = require('node:path');
 const {
   DEFAULT_PROJECT_ROOT,
   LIVE_ROUND_MS,
+  LIVE_BET_MS,
   referenceEvaluateRoll,
   webCryptoSha256Hex,
   webCryptoDeriveFairDice,
@@ -282,7 +283,7 @@ describe('Tier 4 — Real-World End-to-End Workloads & VERCEL=1 Serverless', () 
           c.post('/api/live/bet', { bets: { [idx === 0 ? 'tai' : 'xiu']: 20_000 }, liveRoundId: roundId })
         )
       );
-      await server.setTime(roundStart + 15500);
+      await server.setTime(roundStart + LIVE_BET_MS + 500);
       const settlements = await Promise.all(
         players.map((c) => c.post('/api/live/settle', { liveRoundId: roundId }))
       );

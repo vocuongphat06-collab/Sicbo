@@ -47,16 +47,14 @@
 
   <!-- ==================== 1. TOP CENTER PILL NAVBAR (THREEUI DOCK MAGNIFICATION) ==================== -->
   <header class="top-pill-nav" data-spec>
-    <button id="btnQuickTopRoll" class="pill-circle-icon" data-dock title="Lắc Xúc Xắc Ngay">🎲</button>
+    <button id="btnQuickTopRoll" class="pill-circle-icon" data-dock title="Chốt Cược Phòng Live">🎲</button>
 
-    <!-- Dual Gameplay Mode Switcher -->
-    <div class="mode-switch-group" data-dock>
-      <button id="btnModeManual" class="pill-mode-btn active" title="Chế độ Tự Tay Lắc">🖐 TỰ LẮC</button>
-      <button id="btnModeLive" class="pill-mode-btn" title="Phòng Live Tự Động 15 giây/phiên">
-        <span>⚡ LIVE</span>
-        <span id="liveTimerBadge" class="live-timer-badge">15s</span>
-      </button>
-    </div>
+    <!-- Single Synchronized 45s Live Room Pill -->
+    <button id="btnModeLive" class="pill-mode-btn live-only-pill active" data-dock title="Phòng Live Đồng Bộ 45 giây/phiên (40s nhận cược • 5s mở bát)">
+      <span class="live-pulse-beacon"></span>
+      <span>⚡ LIVE 45S</span>
+      <span id="liveTimerBadge" class="live-timer-badge">40s</span>
+    </button>
 
     <button id="btnOpenDrawer" class="pill-tab" data-dock>⛬ BÀN CƯỢC 180X</button>
     <button id="btnOpenChronicles" class="pill-tab" data-dock>📜 CẦU &amp; FAIR</button>
@@ -87,10 +85,11 @@
     </button>
   </header>
 
-  <!-- Center-Stage Deterministic Live 20s Floating HUD Banner -->
-  <div id="centerLiveBanner" class="center-live-banner">
+  <!-- Center-Stage Deterministic Live 45s Floating HUD Banner -->
+  <div id="centerLiveBanner" class="center-live-banner active">
     <span class="live-pulse-beacon"></span>
-    <span id="centerLiveText" class="center-live-text">PHÒNG LIVE • PHIÊN #<strong id="centerLiveRoundId">-</strong> • <strong id="centerLiveSec">15s</strong></span>
+    <span id="centerLiveText" class="center-live-text">PHÒNG LIVE 45S • PHIÊN #<strong id="centerLiveRoundId">-</strong> • <strong id="centerLiveSec">40s</strong></span>
+    <span id="liveTicketBadge" class="live-ticket-badge hidden"></span>
     <span id="centerLivePhaseBadge" class="live-phase-badge">NHẬN CƯỢC</span>
   </div>
 
@@ -104,7 +103,7 @@
           <canvas class="liquid-fx" aria-hidden="true"></canvas>
           <button id="btnRoll" class="liquid-button">
             <span class="live-emerald-dot"></span>
-            <span id="btnRollLabel" class="btn-roll-label">Lắc Xúc Xắc</span>
+            <span id="btnRollLabel" class="btn-roll-label">Đặt Cược Live (40s)</span>
             <span id="currentWagerSummary" class="wager-tag">0 ₫</span>
           </button>
         </div>
@@ -115,9 +114,9 @@
         <div class="fairness-bar-main">
           <span class="fair-shield">🛡 SHA-256 COMMIT</span>
           <code id="nextHashPreview" class="fair-hash-code">Đang tải mã Hash...</code>
-          <span id="nextNoncePreview" class="fair-nonce-tag">NONCE #1</span>
+          <span id="nextNoncePreview" class="fair-nonce-tag">LIVE #---</span>
         </div>
-        <div id="liveProgressTrack" class="live-progress-track">
+        <div id="liveProgressTrack" class="live-progress-track active">
           <div id="liveProgressFill" class="live-progress-fill"></div>
         </div>
       </div>
@@ -264,7 +263,7 @@
         <div class="dice-mini-showcase" id="resDiceStrip">
           <span>⚃</span><span>⚄</span><span>⚅</span>
         </div>
-        <button id="btnCardRollTrigger" class="card-corner-arrow" title="Lắc Xúc Xắc Ngay">↗</button>
+        <button id="btnCardRollTrigger" class="card-corner-arrow" title="Chốt Cược Phiên Live">↗</button>
       </div>
     </div>
 
@@ -315,12 +314,12 @@
     <!-- Left Telemetry & FPS -->
     <div class="hud-left-meta">
       <span id="hudFps" class="fps-badge">60 FPS</span>
-      <label class="squeeze-toggle-pill" title="Bật để tự tay kéo trượt nắp bát 3D sau khi lắc">
+      <label class="squeeze-toggle-pill" title="Phòng Live 45s tự mở bát đồng bộ trong 5s cuối để khớp nhịp toàn bàn">
         <input type="checkbox" id="chkSqueeze">
         <span class="toggle-dot"></span>
         <span>Nặn Bát 3D</span>
       </label>
-      <span id="statusPill" class="hud-status-text">Sẵn sàng. Chọn phỉnh và đặt vào cửa cược.</span>
+      <span id="statusPill" class="hud-status-text">Phòng Live 45s đồng bộ • Chọn phỉnh và đặt cược trong 40s nhận cược.</span>
     </div>
 
     <!-- Center Tactile Ceramic Chips & Quick Actions -->
@@ -351,7 +350,7 @@
       <div class="eq-bars">
         <span></span><span></span><span></span><span></span>
       </div>
-      <span id="hudModeLabel" class="eq-coord">MANUAL • VIP 08</span>
+      <span id="hudModeLabel" class="eq-coord">LIVE 45S • VIP 08</span>
     </div>
   </footer>
 
@@ -870,7 +869,7 @@
             <li><strong>Chứng minh công bằng:</strong> Sử dụng <code>HMAC-SHA256(serverSeed, clientSeed:nonce)</code> kết hợp rejection sampling <code>byte &lt; 252</code> đảm bảo xác suất đều tuyệt đối 1/6.</li>
             <li><strong>Đổi Client Seed:</strong> Nhấn <code>Đổi Client Seed</code> để mở khóa <code>Server Seed</code> cũ và kiểm chứng toàn bộ lịch sử.</li>
             <li><strong>Thao tác phỉnh:</strong> Nhấn để đặt, <code>Chuột phải</code> hoặc bật <code>− Gỡ cửa</code> để trừ từng cửa, <code>↩ Hoàn tác</code> để quay lại bước trước.</li>
-            <li><strong>Nặn Bát 3D &amp; Phòng Live:</strong> Bật <code>Nặn Bát 3D</code> để tự kéo trượt nắp bát; chế độ <code>⚡ LIVE</code> đồng bộ phiên 20 giây (15s nhận cược + 5s khóa sổ mở bát).</li>
+            <li><strong>Phòng Live Đồng Bộ 45s:</strong> Chu kỳ cố định <code>45 giây</code> mỗi ván (<code>40s</code> nhận cược + <code>5s</code> khóa sổ &amp; tự mở bát); mọi người chơi cùng xem chung kết quả &amp; bảng cầu thời gian thực.</li>
           </ul>
         </div>
       </div>

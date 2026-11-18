@@ -834,14 +834,15 @@ describe('Tier 5 — T5-4: Fairness, clientSeed, VERCEL=1 & Frontend State/Secur
       assert.match(appJs, /await settleUnsettledPastLiveTickets\(data\.unsettledLiveTickets/);
       assert.match(appJs, /await settleUnsettledPastLiveTickets\(json\.unsettledTickets/);
 
-      // 2. Finding 2: startRoll & submitLiveBet must NOT call ensureGuestSessionIfNeeded on 401
+      // 2. Finding 2: Live-only startRoll delegates to submitLiveBet, and submitLiveBet must NOT call ensureGuestSessionIfNeeded on 401
       const startRollCode = extractBalancedJsFunction(appJs, 'startRoll');
       assert.ok(startRollCode);
-      assert.match(startRollCode, /hadUserSession\s*\?\s*true\s*:\s*await ensureGuestSessionIfNeeded/);
-      assert.match(startRollCode, /if\s*\(res\.status\s*===\s*401\)\s*\{\s*openAuthModal\('authPaneLogin'\);\s*return false;\s*\}/);
+      assert.match(startRollCode, /return await submitLiveBet\(totalWager\);/);
+      assert.equal(/\/api\/roll/.test(startRollCode), false);
 
       const submitLiveCode = extractBalancedJsFunction(appJs, 'submitLiveBet');
       assert.ok(submitLiveCode);
+      assert.match(submitLiveCode, /hadUserSession\s*\?\s*true\s*:\s*await ensureGuestSessionIfNeeded/);
       assert.match(submitLiveCode, /if\s*\(res\.status\s*===\s*401\)\s*\{\s*openAuthModal\('authPaneLogin'\);\s*return false;\s*\}/);
 
       // 3. Finding 3: resetClientSessionState on login/register/logout/data.user===null + spectator fallback on 404 settle
@@ -1171,19 +1172,31 @@ describe('Tier 5 — T5-4: Fairness, clientSeed, VERCEL=1 & Frontend State/Secur
         // 8a. Double-click in-flight guards on Admin Ops + Seed Rotate + Daily Bonus + Bankruptcy Aid
         let stateBalance = 1500000000;
         let activeDefer = null;
+        const fixedBootTime = Math.floor(Date.now() / LIVE_ROUND_MS) * LIVE_ROUND_MS + 2000;
         fetchHandler = async (url) => {
+          if (url === '/api/live/state') {
+            return jsonResp(200, {
+              serverTime: fixedBootTime,
+              liveRoundId: Math.floor(fixedBootTime / LIVE_ROUND_MS),
+              phase: 'BETTING',
+              roundSeedHash: 'a'.repeat(64),
+              recentHistory: [{ id: 1001, dice: [4, 5, 6], total: 15, outcome: 'TAI', isTriple: false }],
+              ticket: null,
+              unsettledTickets: [],
+            });
+          }
           if (url === '/api/auth/login') {
             return jsonResp(200, { user: { id: 'adm_1', username: 'admin', displayName: 'Admin', role: 'admin', balance: stateBalance } });
           }
           if (url === '/api/state') {
             return jsonResp(200, {
-              serverTime: Date.now(),
+              serverTime: fixedBootTime,
               user: { id: 'adm_1', username: 'admin', displayName: 'Admin', role: 'admin', balance: stateBalance },
               history: [{ id: 1001, dice: [4, 5, 6], total: 15, outcome: 'TAI', isTriple: false }],
               personalHistory: [{ roundId: 900, timestamp: new Date().toISOString(), dice: [1, 2, 3], total: 6, outcome: 'XIU', bets: { xiu: 10000 }, totalBet: 10000, netProfit: 10000 }],
               ledger: [{ id: 'l1', type: 'daily_bonus', amount: 2000000, balanceBefore: 0, balanceAfter: 2000000, reason: 'bonus', timestamp: new Date().toISOString() }],
               fairness: { serverSeedHash: 'a'.repeat(64), clientSeed: 'seed-1', nonce: 1 },
-              live: { liveRoundId: 500, ticket: { liveRoundId: 500, totalBet: 10000, settled: false } },
+              live: { liveRoundId: Math.floor(fixedBootTime / LIVE_ROUND_MS), roundSeedHash: 'a'.repeat(64), ticket: null },
               unsettledLiveTickets: [],
             });
           }
@@ -1334,13 +1347,47 @@ describe('Tier 5 — T5-4: Fairness, clientSeed, VERCEL=1 & Frontend State/Secur
         assert.equal(spotTai.querySelector('.wager-chip-counter').textContent, '');
         getEl('btnRemoveMode').click();
 
-        // 8c. Wallet timing invariant: pre-shake deduction vs post-reveal credit + Rebet
+        // 8c. Live 45s bet deduction, ticket badge, Rebet & reveal settle count-up after bowl opens
         spotTai.click();
         assert.equal(spotTai.querySelector('.wager-chip-counter').textContent, (5000000).toLocaleString('vi-VN'));
+        const round8cId = Math.floor(fixedBootTime / LIVE_ROUND_MS);
+        let live8cPhase = 'BETTING';
+        let live8cServerTime = fixedBootTime;
+        let ticket8c = null;
         fetchHandler = async (url) => {
-          if (url === '/api/roll') {
+          if (url === '/api/live/bet') {
+            ticket8c = { liveRoundId: round8cId, bets: { tai: 5000000 }, totalBet: 5000000, settled: false };
+            stateBalance = 1495000000;
             return jsonResp(200, {
-              roundId: 2001,
+              replayed: false,
+              liveRoundId: round8cId,
+              ticket: ticket8c,
+              newBalance: 1495000000,
+              roundSeedHash: 'd'.repeat(64),
+            });
+          }
+          if (url === '/api/live/state') {
+            return jsonResp(200, {
+              serverTime: live8cServerTime,
+              liveRoundId: round8cId,
+              phase: live8cPhase,
+              roundSeedHash: 'd'.repeat(64),
+              dice: live8cPhase === 'REVEAL' ? [4, 5, 6] : undefined,
+              total: live8cPhase === 'REVEAL' ? 15 : undefined,
+              isTriple: live8cPhase === 'REVEAL' ? false : undefined,
+              outcome: live8cPhase === 'REVEAL' ? 'TAI' : undefined,
+              recentHistory: [{ id: round8cId - 1, liveRoundId: round8cId - 1, dice: [1, 2, 3], total: 6, outcome: 'XIU', isTriple: false }],
+              ticket: ticket8c,
+              unsettledTickets: ticket8c && !ticket8c.settled ? [ticket8c] : [],
+            });
+          }
+          if (url === '/api/live/settle') {
+            ticket8c = { ...ticket8c, settled: true };
+            stateBalance = 1505000000;
+            return jsonResp(200, {
+              liveRoundId: round8cId,
+              settled: true,
+              settledNow: true,
               dice: [4, 5, 6],
               total: 15,
               isTriple: false,
@@ -1352,20 +1399,71 @@ describe('Tier 5 — T5-4: Fairness, clientSeed, VERCEL=1 & Frontend State/Secur
               winningDetails: [],
             });
           }
+          if (url === '/api/state') {
+            return jsonResp(200, {
+              serverTime: live8cServerTime,
+              user: { id: 'whale', username: 'whale', role: 'user', balance: stateBalance },
+              history: [{ id: round8cId - 1, liveRoundId: round8cId - 1, dice: [1, 2, 3], total: 6, outcome: 'XIU', isTriple: false }],
+              live: { liveRoundId: round8cId, roundSeedHash: 'd'.repeat(64), ticket: ticket8c },
+              unsettledLiveTickets: [],
+            });
+          }
           return jsonResp(200, { history: [] });
         };
-        const rollPromise = getEl('btnRoll').click();
-        await Promise.all(rollPromise);
-        // Before shake completes (bowl still closed), displayedBalance must be deducted and NOT credited
+        await Promise.all(getEl('btnRoll').click());
         assert.equal(getEl('userBalance').textContent, (1495000000).toLocaleString('vi-VN'));
-        mockEngine.shakeCb();
-        assert.equal(getEl('userBalance').textContent, (1505000000).toLocaleString('vi-VN'));
         assert.equal(spotTai.querySelector('.wager-chip-counter').textContent, '');
+        assert.match(getEl('liveTicketBadge').textContent, /5\.000\.000|5,000,000/);
 
         // Rebet restores lastBets (5M on tai)
         getEl('btnRebet').click();
         assert.equal(spotTai.querySelector('.wager-chip-counter').textContent, (5000000).toLocaleString('vi-VN'));
         getEl('btnClear').click();
+
+        // Advance mock clock to REVEAL and verify winnings are credited only after bowl opens
+        mockEngine.shakeCb = null;
+        live8cPhase = 'REVEAL';
+        live8cServerTime = Math.floor(fixedBootTime / LIVE_ROUND_MS) * LIVE_ROUND_MS + LIVE_BET_MS + 500;
+        const waitDeadline = Date.now() + 1500;
+        while (!mockEngine.shakeCb && Date.now() < waitDeadline) {
+          await new Promise(r => setTimeout(r, 40));
+        }
+        assert.ok(mockEngine.shakeCb, 'Live loop must trigger 3D shakeAndRoll on REVEAL');
+        assert.equal(getEl('userBalance').textContent, (1495000000).toLocaleString('vi-VN'));
+        mockEngine.shakeCb();
+        assert.equal(getEl('userBalance').textContent, (1505000000).toLocaleString('vi-VN'));
+
+        // Restoring BETTING phase on whale state before testing 1B cap
+        live8cPhase = 'BETTING';
+        live8cServerTime = fixedBootTime;
+        ticket8c = null;
+        stateBalance = 1500000000;
+        getEl('loginUsername').value = 'whale';
+        getEl('loginPassword').value = 'Pass!123';
+        fetchHandler = async (url) => {
+          if (url === '/api/auth/login') return jsonResp(200, { user: { id: 'whale', username: 'whale', role: 'user', balance: 1500000000 } });
+          if (url === '/api/state') {
+            return jsonResp(200, {
+              serverTime: fixedBootTime,
+              user: { id: 'whale', username: 'whale', role: 'user', balance: 1500000000 },
+              history: [{ id: 1001, dice: [4, 5, 6], total: 15, outcome: 'TAI', isTriple: false }],
+              live: { liveRoundId: round8cId, roundSeedHash: 'd'.repeat(64), ticket: null },
+              unsettledLiveTickets: [],
+            });
+          }
+          if (url === '/api/live/state') {
+            return jsonResp(200, {
+              serverTime: fixedBootTime,
+              liveRoundId: round8cId,
+              phase: 'BETTING',
+              roundSeedHash: 'd'.repeat(64),
+              ticket: null,
+              unsettledTickets: [],
+            });
+          }
+          return jsonResp(200, { history: [] });
+        };
+        await Promise.all(getEl('btnLoginSubmit').click());
 
         // Build 600M on tai (120 x 5M), verify btnDouble rejects > MAX_SINGLE_BET; build 1B, verify next 5M rejects
         for (let i = 0; i < 120; i++) spotTai.click();
@@ -1381,10 +1479,10 @@ describe('Tier 5 — T5-4: Fairness, clientSeed, VERCEL=1 & Frontend State/Secur
         assert.equal(spotTai.querySelector('.wager-chip-counter').textContent, (1000000000).toLocaleString('vi-VN'));
         assert.ok(getEl('toastContainer').children.some(t => t.textContent.includes('1,000,000,000')));
 
-        // 8d. apiFetch 401 reset: direct #adminModal close via #btnAdminSearch, plus #btnRoll & live submitLiveBet 401 with wager <= 2M
+        // 8d. apiFetch 401 reset: direct #adminModal close via #btnAdminSearch, plus Live #btnRoll 401 with wager <= 2M
         stateBalance = 42000000;
         let adminUsersReturn401 = false;
-        const fixedBettingServerTime = Math.floor(Date.now() / 20000) * 20000 + 2000;
+        const fixedBettingServerTime = Math.floor(Date.now() / LIVE_ROUND_MS) * LIVE_ROUND_MS + 2000;
         fetchHandler = async (url) => {
           if (url === '/api/auth/login') return jsonResp(200, { user: { id: 'adm_2', username: 'adm2', role: 'admin', balance: 42000000 } });
           if (url === '/api/state') {
@@ -1394,14 +1492,14 @@ describe('Tier 5 — T5-4: Fairness, clientSeed, VERCEL=1 & Frontend State/Secur
               history: [{ id: 1002, dice: [1, 2, 3], total: 6, outcome: 'XIU', isTriple: false }],
               personalHistory: [{ roundId: 901, timestamp: new Date().toISOString(), dice: [1, 2, 3], total: 6, outcome: 'XIU', bets: { xiu: 10000 }, totalBet: 10000, netProfit: 10000 }],
               ledger: [{ id: 'l2', type: 'win', amount: 20000, balanceBefore: 10000, balanceAfter: 30000, reason: 'win', timestamp: new Date().toISOString() }],
-              live: { liveRoundId: 501, ticket: { liveRoundId: 501, totalBet: 10000, settled: false } },
+              live: { liveRoundId: Math.floor(fixedBettingServerTime / LIVE_ROUND_MS), roundSeedHash: 'c'.repeat(64), ticket: null },
               unsettledLiveTickets: [],
             });
           }
           if (url === '/api/live/state') {
             return jsonResp(200, {
               serverTime: fixedBettingServerTime,
-              liveRoundId: Math.floor(fixedBettingServerTime / 20000),
+              liveRoundId: Math.floor(fixedBettingServerTime / LIVE_ROUND_MS),
               phase: 'BETTING',
               roundSeedHash: 'c'.repeat(64),
               ticket: null,
@@ -1435,7 +1533,7 @@ describe('Tier 5 — T5-4: Fairness, clientSeed, VERCEL=1 & Frontend State/Secur
         assert.match(getEl('walletLedgerBody').innerHTML, /empty-ledger-cell/);
         assert.equal(fetchCalls.filter(c => c.url === '/api/auth/guest').length, 0);
 
-        // 8d-2: Manual #btnRoll 401 with wager <= 2,000,000 (10,000 chip) must NOT call /api/auth/guest, opens authPaneLogin, preserves bets
+        // 8d-2: Live-only #btnRoll 401 with wager <= 2,000,000 (10,000 chip) submits /api/live/bet, must NOT call /api/auth/guest, opens authPaneLogin, preserves bets
         adminUsersReturn401 = false;
         getEl('loginUsername').value = 'adm2';
         getEl('loginPassword').value = 'Pass!123';
@@ -1453,36 +1551,8 @@ describe('Tier 5 — T5-4: Fairness, clientSeed, VERCEL=1 & Frontend State/Secur
         fetchCalls.length = 0;
         await Promise.all(getEl('btnRoll').click());
 
-        assert.equal(fetchCalls.some(c => c.url === '/api/roll'), true);
-        assert.equal(fetchCalls.filter(c => c.url === '/api/auth/guest').length, 0);
-        assert.equal(getEl('authModal').classList.contains('open'), true);
-        assert.equal(getEl('authPaneLogin').classList.contains('active'), true);
-        assert.equal(spotXiu.querySelector('.wager-chip-counter').textContent, (10000).toLocaleString('vi-VN'));
-        assert.equal(getEl('userBalance').textContent, (10000000).toLocaleString('vi-VN'));
-        assert.equal(getEl('navUserBadge').textContent, 'Đăng nhập');
-        assert.match(getEl('personalLedgerBody').innerHTML, /empty-ledger-cell/);
-        assert.match(getEl('walletLedgerBody').innerHTML, /empty-ledger-cell/);
-
-        // 8d-3: Live mode submitLiveBet 401 with wager <= 2,000,000 (10,000 chip) must NOT call /api/auth/guest, opens authPaneLogin, preserves bets
-        getEl('btnCloseAuth').click();
-        getEl('loginUsername').value = 'adm2';
-        getEl('loginPassword').value = 'Pass!123';
-        await Promise.all(getEl('btnLoginSubmit').click());
-        assert.equal(getEl('userBalance').textContent, (42000000).toLocaleString('vi-VN'));
-        getEl('btnModeLive').click();
-        await new Promise(r => setImmediate(r));
-        getEl('btnAuthModal').click();
-        assert.equal(getEl('authPaneLogin').classList.contains('active'), false);
-        getEl('btnCloseAuth').click();
-        assert.equal(getEl('authModal').classList.contains('open'), false);
-
-        chip10k.click();
-        spotXiu.click();
-        assert.equal(spotXiu.querySelector('.wager-chip-counter').textContent, (10000).toLocaleString('vi-VN'));
-        fetchCalls.length = 0;
-        await Promise.all(getEl('btnRoll').click());
-
         assert.equal(fetchCalls.some(c => c.url === '/api/live/bet'), true);
+        assert.equal(fetchCalls.some(c => c.url === '/api/roll'), false);
         assert.equal(fetchCalls.filter(c => c.url === '/api/auth/guest').length, 0);
         assert.equal(getEl('authModal').classList.contains('open'), true);
         assert.equal(getEl('authPaneLogin').classList.contains('active'), true);
@@ -1494,7 +1564,6 @@ describe('Tier 5 — T5-4: Fairness, clientSeed, VERCEL=1 & Frontend State/Secur
 
         getEl('btnCloseAuth').click();
         getEl('btnClear').click();
-        getEl('btnModeManual').click();
 
         // 8e. Direct VM execution of resetClientSessionState verifying liveTicket/liveRevealedRoundId/personalHistory/walletLedger clearing
         const resetFnCode = extractBalancedJsFunction(appJs, 'resetClientSessionState');

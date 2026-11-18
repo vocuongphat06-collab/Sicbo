@@ -267,7 +267,7 @@ html, body {
   display: none;
 }
 
-/* Center-Stage Floating Live 15s HUD Banner */
+/* Center-Stage Floating Live 45s HUD Banner */
 .center-live-banner {
   position: fixed;
   top: calc(68 * var(--u));
@@ -282,6 +282,8 @@ html, body {
   border: 1px solid rgba(94, 199, 154, 0.45);
   border-radius: 999px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+  max-width: 94vw;
+  white-space: nowrap;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.25s ease, transform 0.25s ease;
@@ -291,6 +293,21 @@ html, body {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
   pointer-events: auto;
+}
+
+.live-ticket-badge {
+  background: rgba(232, 199, 163, 0.18);
+  color: var(--champagne);
+  border: 1px solid rgba(232, 199, 163, 0.45);
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-family: var(--font-mono);
+  font-size: calc(9.5 * var(--u));
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.live-ticket-badge.hidden {
+  display: none;
 }
 
 .live-pulse-beacon {
@@ -356,15 +373,25 @@ html, body {
   flex-shrink: 0;
 }
 
-/* Mode Switcher Segmented Pill */
-.mode-switch-group {
+.live-only-pill {
+  background: rgba(94, 199, 154, 0.14);
+  border: 1px solid rgba(94, 199, 154, 0.42);
+  color: var(--alabaster);
+  font-family: var(--font-mono);
+  font-size: calc(10.5 * var(--u));
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: calc(5 * var(--u)) calc(11 * var(--u));
+  border-radius: 999px;
   display: inline-flex;
   align-items: center;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 999px;
-  padding: 2px;
-  gap: 2px;
+  gap: 6px;
+  white-space: nowrap;
+}
+.live-only-pill.active {
+  background: var(--alabaster);
+  color: #181518;
+  border-color: var(--alabaster);
 }
 
 .pill-mode-btn {
@@ -2289,11 +2316,19 @@ body.matrix-open .editorial-left-wing .hero-cta-row {
     overflow-x: auto;
     scrollbar-width: none;
   }
+  .center-live-banner {
+    top: 62px;
+    padding: 5px 10px;
+    gap: 6px;
+    font-size: 10.5px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
   .editorial-left-wing {
     position: relative;
     top: auto; left: auto; bottom: auto;
     width: min(560px, 92vw);
-    margin: 76px auto 16px;
+    margin: 106px auto 16px;
   }
   .editorial-right-wing {
     position: relative;

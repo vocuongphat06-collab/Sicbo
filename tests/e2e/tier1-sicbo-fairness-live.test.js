@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const {
   MACAU_BET_KEYS,
   LIVE_ROUND_MS,
+  LIVE_BET_MS,
   referenceEvaluateRoll,
   webCryptoSha256Hex,
   webCryptoDeriveFairDice,
@@ -278,7 +279,7 @@ describe('Tier 1 — F3: Provably Fair Web Crypto Parity & Serverless Live Clock
     }
   });
 
-  it('F3.4: clocked Live Room BETTING phase (elapsed=0 & 14999) hides dice, allows bet, rejects settle', async () => {
+  it('F3.4: clocked Live Room BETTING phase (elapsed=0 & LIVE_BET_MS-1) hides dice, allows bet, rejects settle', async () => {
     const roundStart = Math.ceil(Date.now() / LIVE_ROUND_MS) * LIVE_ROUND_MS;
     const expectedRoundId = Math.floor(roundStart / LIVE_ROUND_MS);
     const server = await startClockedServer({ initialNowMs: roundStart });
@@ -294,12 +295,12 @@ describe('Tier 1 — F3: Provably Fair Web Crypto Parity & Serverless Live Clock
       assert.equal(s0.status, 200);
       assert.equal(s0.json.liveRoundId, expectedRoundId);
       assert.equal(s0.json.phase, 'BETTING');
-      assert.equal(s0.json.betRemainingMs, 15000);
+      assert.equal(s0.json.betRemainingMs, LIVE_BET_MS);
       assert.equal(s0.json.dice, undefined, 'BETTING phase must NEVER leak dice');
       assert.equal(s0.json.outcome, undefined, 'BETTING phase must NEVER leak outcome');
       assert.match(s0.json.roundSeedHash, /^[0-9a-f]{64}$/i);
 
-      await server.setTime(roundStart + 14999);
+      await server.setTime(roundStart + LIVE_BET_MS - 1);
       const sEnd = await client.get('/api/live/state');
       assert.equal(sEnd.status, 200);
       assert.equal(sEnd.json.phase, 'BETTING');
@@ -320,7 +321,7 @@ describe('Tier 1 — F3: Provably Fair Web Crypto Parity & Serverless Live Clock
     }
   });
 
-  it('F3.5: clocked Live Room REVEAL phase (elapsed=15000) reveals dice, rejects bet, settles once', async () => {
+  it('F3.5: clocked Live Room REVEAL phase (elapsed=LIVE_BET_MS) reveals dice, rejects bet, settles once', async () => {
     const roundStart = Math.ceil(Date.now() / LIVE_ROUND_MS) * LIVE_ROUND_MS;
     const expectedRoundId = Math.floor(roundStart / LIVE_ROUND_MS);
     const server = await startClockedServer({ initialNowMs: roundStart + 2000 });
@@ -339,7 +340,7 @@ describe('Tier 1 — F3: Provably Fair Web Crypto Parity & Serverless Live Clock
       });
       assert.equal(betRes.status, 200);
 
-      await server.setTime(roundStart + 15000);
+      await server.setTime(roundStart + LIVE_BET_MS);
       const revState = await client.get('/api/live/state');
       assert.equal(revState.status, 200);
       assert.equal(revState.json.liveRoundId, expectedRoundId);
@@ -370,10 +371,10 @@ describe('Tier 1 — F3: Provably Fair Web Crypto Parity & Serverless Live Clock
     }
   });
 
-  it('F3.6: clocked Live Room rollover (elapsed=20000) advances liveRoundId, resets phase, and rejects stale roundId', async () => {
+  it('F3.6: clocked Live Room rollover (elapsed=LIVE_ROUND_MS) advances liveRoundId, resets phase, and rejects stale roundId', async () => {
     const roundStart = Math.ceil(Date.now() / LIVE_ROUND_MS) * LIVE_ROUND_MS;
     const round1Id = Math.floor(roundStart / LIVE_ROUND_MS);
-    const server = await startClockedServer({ initialNowMs: roundStart + 19999 });
+    const server = await startClockedServer({ initialNowMs: roundStart + LIVE_ROUND_MS - 1 });
     try {
       const client = createClient(server.baseUrl);
       const reg = await client.post('/api/auth/register', {
@@ -386,7 +387,7 @@ describe('Tier 1 — F3: Provably Fair Web Crypto Parity & Serverless Live Clock
       assert.equal(before.json.liveRoundId, round1Id);
       assert.equal(before.json.phase, 'REVEAL');
 
-      await server.setTime(roundStart + 20000);
+      await server.setTime(roundStart + LIVE_ROUND_MS);
       const after = await client.get('/api/live/state');
       assert.equal(after.status, 200);
       assert.equal(after.json.liveRoundId, round1Id + 1);
@@ -490,7 +491,7 @@ describe('Tier 1 — F7: Express Routes, Fairness Rotate, Security Headers & Mul
     }
   });
 
-  it('F7.4: un-mocked real-time GET /api/live/state obeys wall-clock 20s round formula', async () => {
+  it('F7.4: un-mocked real-time GET /api/live/state obeys wall-clock 45s round formula', async () => {
     const server = await startTestServer({ stripSecrets: true });
     try {
       const beforeNow = Date.now();
@@ -501,7 +502,7 @@ describe('Tier 1 — F7: Express Routes, Fairness Rotate, Security Headers & Mul
       const s = res.json;
       assert.ok(s.serverTime >= beforeNow - 2000 && s.serverTime <= afterNow + 2000);
       assert.equal(s.liveRoundId, Math.floor(s.serverTime / LIVE_ROUND_MS));
-      const expectedPhase = (s.serverTime % LIVE_ROUND_MS) < 15000 ? 'BETTING' : 'REVEAL';
+      const expectedPhase = (s.serverTime % LIVE_ROUND_MS) < LIVE_BET_MS ? 'BETTING' : 'REVEAL';
       assert.equal(s.phase, expectedPhase);
       assert.match(s.roundSeedHash, /^[0-9a-f]{64}$/i);
     } finally {
@@ -509,10 +510,10 @@ describe('Tier 1 — F7: Express Routes, Fairness Rotate, Security Headers & Mul
     }
   });
 
-  it('F7.5: two independent Vercel-style server processes sharing LIVE_MASTER_SECRET produce identical live dice', async () => {
+  it('F7.5: two independent Vercel-style server processes sharing LIVE_MASTER_SECRET produce identical live dice & synced recentHistory', async () => {
     const sharedSecret = crypto.randomBytes(32).toString('hex');
     const roundStart = Math.ceil(Date.now() / LIVE_ROUND_MS) * LIVE_ROUND_MS;
-    const revealNow = roundStart + 16000;
+    const revealNow = roundStart + LIVE_BET_MS + 1000;
 
     let s1 = null;
     let s2 = null;
@@ -537,6 +538,7 @@ describe('Tier 1 — F7: Express Routes, Fairness Rotate, Security Headers & Mul
       assert.equal(r1.json.roundSeedHash, r2.json.roundSeedHash);
       assert.deepEqual(r1.json.dice, r2.json.dice);
       assert.equal(r1.json.outcome, r2.json.outcome);
+      assert.deepEqual(r1.json.recentHistory, r2.json.recentHistory);
     } finally {
       await Promise.allSettled([s1?.close(), s2?.close()]);
     }

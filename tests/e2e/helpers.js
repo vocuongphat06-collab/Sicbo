@@ -15,8 +15,8 @@ function getTargetRoot() {
     : DEFAULT_PROJECT_ROOT;
 }
 
-const LIVE_ROUND_MS = 20000;
-const LIVE_BET_MS = 15000;
+const LIVE_ROUND_MS = 45000;
+const LIVE_BET_MS = 40000;
 const LIVE_REVEAL_MS = 5000;
 
 const TOTAL_MULTIPLIERS = Object.freeze({

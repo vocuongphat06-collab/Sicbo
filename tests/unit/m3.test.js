@@ -983,7 +983,7 @@ describe('M3 Suite 4 — Fairness, /api/roll, Parallel Race & Idempotency', () =
 // =============================================================================
 describe('M3 Suite 5 — Serverless Live Room Lifecycle', () => {
   it('5.1: Enforces BETTING non-disclosure, round mismatch, REVEAL transition, flattened settle & cross-round settle', async () => {
-    const baseTime = 1_700_000_000_000; // divisible by 20_000 -> elapsedMs = 0
+    const baseTime = LIVE_ROUND_MS * 37_777_777; // divisible by 45_000 -> elapsedMs = 0
     const round1 = Math.floor(baseTime / LIVE_ROUND_MS);
     const srv = await startTestServer({ initialNow: baseTime });
 
@@ -992,7 +992,7 @@ describe('M3 Suite 5 — Serverless Live Room Lifecycle', () => {
     const bystander = createClient(srv.baseUrl);
     await bystander.post('/api/auth/register', { username: 'live_bystander', password: 'Password!123' });
 
-    // BETTING phase checks
+    // BETTING phase checks + synced recentHistory non-disclosure
     const sBet = await player.get('/api/live/state');
     assert.equal(sBet.status, 200);
     assert.equal(sBet.json.liveRoundId, round1);
@@ -1001,6 +1001,9 @@ describe('M3 Suite 5 — Serverless Live Room Lifecycle', () => {
     assert.equal('total' in sBet.json, false);
     assert.equal('isTriple' in sBet.json, false);
     assert.equal('outcome' in sBet.json, false);
+    assert.ok(Array.isArray(sBet.json.recentHistory) && sBet.json.recentHistory.length === 60);
+    assert.equal(sBet.json.recentHistory[sBet.json.recentHistory.length - 1].liveRoundId, round1 - 1);
+    assert.equal(sBet.json.recentHistory.some((h) => h.liveRoundId === round1), false);
     assert.equal(
       sBet.json.roundSeedHash,
       computeLiveCommitmentHash(srv.cfg.liveMasterSecret, round1)
@@ -1109,7 +1112,7 @@ describe('M3 Suite 5 — Serverless Live Room Lifecycle', () => {
   });
 
   it('5.2: Live Room enforces MAX_SINGLE_BET on merged & concurrent bets while preserving Idempotency-Key replay and REVEAL settle', async () => {
-    const baseTime = 1_700_000_000_000;
+    const baseTime = LIVE_ROUND_MS * 37_777_777;
     const round1 = Math.floor(baseTime / LIVE_ROUND_MS);
     const srv = await startTestServer({ initialNow: baseTime });
 
@@ -1190,7 +1193,7 @@ describe('M3 Suite 5 — Serverless Live Room Lifecycle', () => {
   });
 
   it('5.3: Cross-instance cold-start shares DB authority for Idempotency-Key replay and concurrent MAX_SINGLE_BET merge', async () => {
-    const baseTime = 1_700_000_000_000;
+    const baseTime = LIVE_ROUND_MS * 37_777_777;
     const round1 = Math.floor(baseTime / LIVE_ROUND_MS);
     const srv1 = await startTestServer({ initialNow: baseTime });
 
@@ -1322,7 +1325,7 @@ describe('M3 Suite 6 — HTTP Rate Limiting (Auth IP & Roll User+IP)', () => {
   });
 
   it('6.2: BUG-1..5 & NOTE-6 regressions (parallel recover CAS, live/bet lock TOCTOU, admin self-lock, guest reset-pw, VERCEL betLimiter user-key)', async () => {
-    const baseTime = 1_700_000_000_000;
+    const baseTime = LIVE_ROUND_MS * 37_777_777;
     const round1 = Math.floor(baseTime / LIVE_ROUND_MS);
     const srv = await startTestServer({
       initialNow: baseTime,

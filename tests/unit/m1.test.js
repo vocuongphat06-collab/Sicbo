@@ -32,7 +32,8 @@ const {
   deriveFairDice,
   getLiveRoundClock,
   deriveLiveRoundDice,
-  computeLiveCommitmentHash
+  computeLiveCommitmentHash,
+  deriveLiveRecentHistory
 } = engine;
 
 const tempDirsToClean = [];
@@ -94,8 +95,8 @@ describe('lib/config.js', () => {
     const cfg = loadConfig({ env: {}, dataDir: tmpDir });
 
     const expected = {
-      LIVE_ROUND_MS: 20_000,
-      LIVE_BET_MS: 15_000,
+      LIVE_ROUND_MS: 45_000,
+      LIVE_BET_MS: 40_000,
       LIVE_REVEAL_MS: 5_000,
       DAILY_BONUS_AMOUNT: 2_000_000,
       DAILY_BONUS_COOLDOWN_MS: 24 * 60 * 60 * 1000,
@@ -669,45 +670,46 @@ describe('lib/sicbo-engine.js — Provably Fair & Web Crypto Parity', () => {
 });
 
 describe('lib/sicbo-engine.js — Live Clock & Round Derivation', () => {
-  it('computes exact BETTING/REVEAL boundaries across 20s rounds', () => {
-    const base = 1_700_000_000_000; // divisible by 20_000 (85_000_000 * 20_000)
+  it('computes exact BETTING/REVEAL boundaries across 45s rounds (40s bet + 5s reveal)', () => {
+    const roundId = 37_777_777;
+    const base = roundId * 45_000;
 
     const c0 = getLiveRoundClock(base);
-    assert.equal(c0.liveRoundId, 85_000_000);
+    assert.equal(c0.liveRoundId, roundId);
     assert.equal(c0.roundStartMs, base);
     assert.equal(c0.elapsedMs, 0);
     assert.equal(c0.phase, 'BETTING');
-    assert.equal(c0.betRemainingMs, 15_000);
-    assert.equal(c0.roundRemainingMs, 20_000);
+    assert.equal(c0.betRemainingMs, 40_000);
+    assert.equal(c0.roundRemainingMs, 45_000);
 
-    const c14999 = getLiveRoundClock(base + 14_999);
-    assert.equal(c14999.liveRoundId, 85_000_000);
-    assert.equal(c14999.elapsedMs, 14_999);
-    assert.equal(c14999.phase, 'BETTING');
-    assert.equal(c14999.betRemainingMs, 1);
-    assert.equal(c14999.roundRemainingMs, 5_001);
+    const c39999 = getLiveRoundClock(base + 39_999);
+    assert.equal(c39999.liveRoundId, roundId);
+    assert.equal(c39999.elapsedMs, 39_999);
+    assert.equal(c39999.phase, 'BETTING');
+    assert.equal(c39999.betRemainingMs, 1);
+    assert.equal(c39999.roundRemainingMs, 5_001);
 
-    const c15000 = getLiveRoundClock(base + 15_000);
-    assert.equal(c15000.liveRoundId, 85_000_000);
-    assert.equal(c15000.elapsedMs, 15_000);
-    assert.equal(c15000.phase, 'REVEAL');
-    assert.equal(c15000.betRemainingMs, 0);
-    assert.equal(c15000.roundRemainingMs, 5_000);
+    const c40000 = getLiveRoundClock(base + 40_000);
+    assert.equal(c40000.liveRoundId, roundId);
+    assert.equal(c40000.elapsedMs, 40_000);
+    assert.equal(c40000.phase, 'REVEAL');
+    assert.equal(c40000.betRemainingMs, 0);
+    assert.equal(c40000.roundRemainingMs, 5_000);
 
-    const c19999 = getLiveRoundClock(base + 19_999);
-    assert.equal(c19999.liveRoundId, 85_000_000);
-    assert.equal(c19999.elapsedMs, 19_999);
-    assert.equal(c19999.phase, 'REVEAL');
-    assert.equal(c19999.betRemainingMs, 0);
-    assert.equal(c19999.roundRemainingMs, 1);
+    const c44999 = getLiveRoundClock(base + 44_999);
+    assert.equal(c44999.liveRoundId, roundId);
+    assert.equal(c44999.elapsedMs, 44_999);
+    assert.equal(c44999.phase, 'REVEAL');
+    assert.equal(c44999.betRemainingMs, 0);
+    assert.equal(c44999.roundRemainingMs, 1);
 
-    const c20000 = getLiveRoundClock(base + 20_000);
-    assert.equal(c20000.liveRoundId, 85_000_001);
-    assert.equal(c20000.roundStartMs, base + 20_000);
-    assert.equal(c20000.elapsedMs, 0);
-    assert.equal(c20000.phase, 'BETTING');
-    assert.equal(c20000.betRemainingMs, 15_000);
-    assert.equal(c20000.roundRemainingMs, 20_000);
+    const c45000 = getLiveRoundClock(base + 45_000);
+    assert.equal(c45000.liveRoundId, roundId + 1);
+    assert.equal(c45000.roundStartMs, base + 45_000);
+    assert.equal(c45000.elapsedMs, 0);
+    assert.equal(c45000.phase, 'BETTING');
+    assert.equal(c45000.betRemainingMs, 40_000);
+    assert.equal(c45000.roundRemainingMs, 45_000);
 
     for (const badNow of [-1, NaN, Infinity, '1700000000000', null]) {
       assert.throws(() => getLiveRoundClock(badNow));
@@ -748,10 +750,30 @@ describe('lib/sicbo-engine.js — Live Clock & Round Derivation', () => {
     assert.equal(Object.is(clock.roundStartMs, 0), true);
     assert.equal(Object.is(clock.elapsedMs, 0), true);
     assert.equal(clock.phase, 'BETTING');
-    assert.equal(clock.betRemainingMs, 15_000);
-    assert.equal(clock.roundRemainingMs, 20_000);
+    assert.equal(clock.betRemainingMs, 40_000);
+    assert.equal(clock.roundRemainingMs, 45_000);
 
     const liveNegZero = deriveLiveRoundDice('live-master-secret-abc-123', -0);
     assert.equal(Object.is(liveNegZero.liveRoundId, 0), true);
+  });
+
+  it('derives synced recent Live history strictly hiding active BETTING round and revealing on REVEAL', () => {
+    const secret = 'live-master-secret-sync-history';
+    const roundId = 100;
+    const roundStart = roundId * 45_000;
+
+    const betHist = deriveLiveRecentHistory(secret, getLiveRoundClock(roundStart + 5_000), 10);
+    assert.equal(betHist.length, 10);
+    assert.equal(betHist[0].liveRoundId, 90);
+    assert.equal(betHist[betHist.length - 1].liveRoundId, 99);
+    assert.equal(betHist.some((e) => e.liveRoundId === roundId), false);
+
+    const revHist = deriveLiveRecentHistory(secret, getLiveRoundClock(roundStart + 40_000), 10);
+    assert.equal(revHist.length, 10);
+    assert.equal(revHist[0].liveRoundId, 91);
+    assert.equal(revHist[revHist.length - 1].liveRoundId, 100);
+    assert.deepEqual(revHist[revHist.length - 1].dice, deriveLiveRoundDice(secret, 100).dice);
+
+    assert.deepEqual(deriveLiveRecentHistory(secret, getLiveRoundClock(0), 10), []);
   });
 });

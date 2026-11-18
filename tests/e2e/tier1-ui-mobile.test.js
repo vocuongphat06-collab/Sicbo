@@ -113,11 +113,18 @@ describe('Tier 1 — F8, F9, F10: Frontend Assets, UI Overhaul, Chips, Mobile & 
       }
     });
 
-    it('F8.2: Hero promo block & legacy +5M topup are removed; ? Luat & Ty le modal is present', () => {
+    it('F8.2: Hero promo block, legacy +5M topup & manual solo toggle are removed; Live 45s & ? Luat & Ty le modal are present', () => {
       assert.equal(/class=["'][^"']*editorial-hero-block/.test(html), false, 'Hero promo block must be removed');
       assert.equal(/Step into the private salon/i.test(html), false, 'Legacy Hero promo text must be removed from play table');
       assert.equal(/id=["']btnTopup["']/.test(html), false, 'Legacy infinite +5M topup button must be removed');
       assert.equal(/\/api\/topup/.test(appJs), false, 'Legacy /api/topup endpoint call must be removed');
+      assert.equal(/id=["']btnModeManual["']/.test(html), false, 'Manual solo toggle #btnModeManual must be removed');
+      assert.equal(/TỰ LẮC/.test(html), false, 'Legacy TỰ LẮC mode text must be removed');
+
+      assert.match(html, /id=["']btnModeLive["']/);
+      assert.match(html, /LIVE 45S/);
+      assert.match(appJs, /LIVE_ROUND_MS\s*=\s*45000/);
+      assert.match(appJs, /LIVE_BET_MS\s*=\s*40000/);
 
       assert.match(html, /id=["']btnOpenRules["']/);
       assert.match(html, /id=["']rulesModal["']/);

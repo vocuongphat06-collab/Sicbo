@@ -6,6 +6,7 @@ const vm = require('node:vm');
 
 const {
   LIVE_ROUND_MS,
+  LIVE_BET_MS,
   startTestServer,
   startClockedServer,
   createClient,
@@ -485,8 +486,8 @@ describe('Tier 2 — F3: Provably Fair & Live Clock Boundaries (T2-LiveClock)', 
     if (server) await server.close();
   });
 
-  it('T2-F3.1: GET /api/live/state at elapsed=0 and 14999 never exposes dice or outcome', async () => {
-    for (const offset of [0, 14999]) {
+  it('T2-F3.1: GET /api/live/state at elapsed=0 and LIVE_BET_MS-1 never exposes dice or outcome', async () => {
+    for (const offset of [0, LIVE_BET_MS - 1]) {
       await server.setTime(roundStart + offset);
       const res = await client.get('/api/live/state');
       assert.equal(res.status, 200);
@@ -503,14 +504,14 @@ describe('Tier 2 — F3: Provably Fair & Live Clock Boundaries (T2-LiveClock)', 
     assert.ok([400, 425].includes(settle.status));
   });
 
-  it('T2-F3.2: POST /api/live/bet during REVEAL (elapsed=15000) is rejected with 400', async () => {
-    await server.setTime(roundStart + 15000);
+  it('T2-F3.2: POST /api/live/bet during REVEAL (elapsed=LIVE_BET_MS) is rejected with 400', async () => {
+    await server.setTime(roundStart + LIVE_BET_MS);
     const betRes = await client.post('/api/live/bet', { bets: { tai: 10_000 }, liveRoundId: roundId });
     assert.equal(betRes.status, 400);
   });
 
   it('T2-F3.3: POST /api/live/bet with mismatched/stale liveRoundId is rejected with 400', async () => {
-    await server.setTime(roundStart + 20000);
+    await server.setTime(roundStart + LIVE_ROUND_MS);
     const betRes = await client.post('/api/live/bet', { bets: { tai: 10_000 }, liveRoundId: roundId });
     assert.equal(betRes.status, 400);
   });

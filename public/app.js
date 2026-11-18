@@ -8,8 +8,8 @@ document.addEventListener('DOMContentLoaded', () => {
     quality: 'sicbo_graphics_quality'
   });
 
-  const LIVE_ROUND_MS = 20000;
-  const LIVE_BET_MS = 15000;
+  const LIVE_ROUND_MS = 45000;
+  const LIVE_BET_MS = 40000;
   const GUEST_MAX_BALANCE = 2000000;
   const MAX_SINGLE_BET = 1000000000;
 
@@ -84,15 +84,16 @@ document.addEventListener('DOMContentLoaded', () => {
     lastBets: {},
     betUndoStack: [],
     removeMode: false,
-    mode: 'manual',
+    mode: 'live',
     cardRoadView: 'bead',
     serverTimeOffsetMs: 0,
     liveRoundId: null,
     livePhase: 'BETTING',
-    liveLastSecTick: 15,
+    liveLastSecTick: 40,
     liveIntervalId: null,
     liveRevealedRoundId: null,
     liveLastCommittedHashRoundId: null,
+    liveRoundSeedHash: '',
     liveTicket: null,
     isSyncingLiveReveal: false,
     settlingPastRounds: new Set(),
@@ -124,7 +125,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const el = {
     userBalance: document.getElementById('userBalance'),
     btnAudioToggle: document.getElementById('btnAudioToggle'),
-    btnModeManual: document.getElementById('btnModeManual'),
     btnModeLive: document.getElementById('btnModeLive'),
     liveTimerBadge: document.getElementById('liveTimerBadge'),
     liveProgressTrack: document.getElementById('liveProgressTrack'),
@@ -144,6 +144,7 @@ document.addEventListener('DOMContentLoaded', () => {
     centerLiveText: document.getElementById('centerLiveText'),
     centerLiveRoundId: document.getElementById('centerLiveRoundId'),
     centerLiveSec: document.getElementById('centerLiveSec'),
+    liveTicketBadge: document.getElementById('liveTicketBadge'),
     centerLivePhaseBadge: document.getElementById('centerLivePhaseBadge'),
 
     fairnessCommitBar: document.getElementById('fairnessCommitBar'),
@@ -539,8 +540,8 @@ document.addEventListener('DOMContentLoaded', () => {
       engine.setBowlOpaqueForSqueeze(checked);
       showStatus(
         checked
-          ? 'Đã BẬT Nặn Bát 3D: Sau khi lắc, hãy kéo trượt ngang chiếc bát 3D để tự mở!'
-          : 'Đã TẮT Nặn Bát 3D: Bát pha lê trong suốt giúp nhìn rõ xúc xắc nảy và tự động mở bát.'
+          ? 'Phòng Live 45s luôn tự động mở bát đồng bộ ở pha 5s cuối để mọi người chơi khớp nhịp.'
+          : 'Bát pha lê trong suốt: Theo dõi 3 viên xúc xắc Live đồng bộ theo giờ máy chủ.'
       );
     });
   }
@@ -1325,7 +1326,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // ==================== 6. DETERMINISTIC LIVE ROOM (20S SERVER CLOCK) ====================
+  // ==================== 6. DETERMINISTIC LIVE ROOM (45S SERVER CLOCK) ====================
   function getClientLiveClock() {
     const nowMs = Math.floor(Date.now() + state.serverTimeOffsetMs);
     const liveRoundId = Math.floor(nowMs / LIVE_ROUND_MS);
@@ -1336,32 +1337,24 @@ document.addEventListener('DOMContentLoaded', () => {
     return { nowMs, liveRoundId, elapsedMs, phase, betRemainingMs, roundRemainingMs };
   }
 
-  function setGameMode(newMode) {
-    sound.playTick();
-    state.mode = newMode;
-
-    if (el.btnModeManual) el.btnModeManual.classList.toggle('active', newMode === 'manual');
-    if (el.btnModeLive) el.btnModeLive.classList.toggle('active', newMode === 'live');
-    if (el.liveProgressTrack) el.liveProgressTrack.classList.toggle('active', newMode === 'live');
-    if (el.centerLiveBanner) el.centerLiveBanner.classList.toggle('active', newMode === 'live');
-    if (el.hudModeLabel) el.hudModeLabel.textContent = newMode === 'live' ? 'LIVE 20S • VIP 08' : 'MANUAL • VIP 08';
-
-    if (newMode === 'live') {
-      startLiveLoop();
-      showStatus('⚡ Phòng Live đồng bộ 20 giây/phiên (15s nhận cược • 5s khóa sổ mở bát).');
-    } else {
-      stopLiveLoop();
-      if (el.liveTimerBadge) {
-        el.liveTimerBadge.textContent = '15s';
-        el.liveTimerBadge.classList.remove('urgent');
-      }
-      if (el.btnRollLabel) el.btnRollLabel.textContent = 'Lắc Xúc Xắc';
-      showStatus('Chế độ Tự Tay Lắc: Đặt phỉnh (hoặc lắc thử miễn phí) bằng nút Lắc Xúc Xắc.');
-    }
+  function initLiveRoomUI() {
+    state.mode = 'live';
+    if (el.btnModeLive) el.btnModeLive.classList.add('active');
+    if (el.liveProgressTrack) el.liveProgressTrack.classList.add('active');
+    if (el.centerLiveBanner) el.centerLiveBanner.classList.add('active');
+    if (el.hudModeLabel) el.hudModeLabel.textContent = 'LIVE 45S • VIP 08';
+    updateLiveTimerUI();
+    startLiveLoop();
+    showStatus('⚡ Phòng Live 45s đồng bộ (40s nhận cược • 5s khóa sổ mở bát).');
   }
 
-  if (el.btnModeManual) el.btnModeManual.addEventListener('click', () => setGameMode('manual'));
-  if (el.btnModeLive) el.btnModeLive.addEventListener('click', () => setGameMode('live'));
+  if (el.btnModeLive) {
+    el.btnModeLive.addEventListener('click', () => {
+      sound.playTick();
+      syncLiveStateFromServer(false);
+      showToast('Phòng Live 45s đang đồng bộ trực tiếp theo đồng hồ máy chủ.', 'info', 2000);
+    });
+  }
 
   function restoreLiveTicketFromServer(ticket, unsettledTickets, activeRoundId) {
     let candidate = (ticket && !ticket.settled) ? ticket : null;
@@ -1372,6 +1365,7 @@ document.addEventListener('DOMContentLoaded', () => {
       state.liveTicket = {
         liveRoundId: candidate.liveRoundId,
         totalBet: Number(candidate.totalBet) || 0,
+        bets: candidate.bets ? { ...candidate.bets } : {},
         settled: false
       };
     } else if (ticket && ticket.settled && state.liveTicket && state.liveTicket.liveRoundId === ticket.liveRoundId) {
@@ -1470,10 +1464,26 @@ document.addEventListener('DOMContentLoaded', () => {
       if (typeof json.serverTime === 'number') {
         state.serverTimeOffsetMs = json.serverTime - Date.now();
       }
-      if (json.roundSeedHash && state.mode === 'live' && el.nextHashPreview) {
-        el.nextHashPreview.textContent = truncateHash(json.roundSeedHash);
+      if (json.roundSeedHash) {
+        state.liveRoundSeedHash = json.roundSeedHash;
+      }
+      if (typeof json.liveRoundId === 'number') {
+        state.liveRoundId = json.liveRoundId;
+      }
+      if (Array.isArray(json.recentHistory) && json.recentHistory.length > 0 && !state.isRolling && !state.isSqueezeActive) {
+        const prevLastId = state.history.length > 0 ? state.history[state.history.length - 1].id : null;
+        const nextLast = json.recentHistory[json.recentHistory.length - 1];
+        state.history = json.recentHistory;
+        if (prevLastId !== nextLast.id) {
+          if (el.roundCounterLabel) el.roundCounterLabel.textContent = `MACAU LIVE • #${nextLast.id}`;
+          engine.setDiceFacesInstant(nextLast.dice);
+          renderRoadmapAndBigRoad();
+        }
       }
       restoreLiveTicketFromServer(json.ticket, json.unsettledTickets, json.liveRoundId);
+      updateLiveTimerUI();
+      updateUI();
+      updateFairnessCommitUI();
       if (state.user && typeof json.liveRoundId === 'number') {
         await settleUnsettledPastLiveTickets(json.unsettledTickets, json.liveRoundId);
       }
@@ -1559,7 +1569,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (el.liveTimerBadge) {
       el.liveTimerBadge.textContent = `${sec}s`;
-      el.liveTimerBadge.classList.toggle('urgent', clk.phase === 'BETTING' && sec <= 3 && sec > 0);
+      el.liveTimerBadge.classList.toggle('urgent', clk.phase === 'BETTING' && sec <= 5 && sec > 0);
     }
     if (el.liveProgressFill) el.liveProgressFill.style.width = `${pct}%`;
 
@@ -1570,8 +1580,26 @@ document.addEventListener('DOMContentLoaded', () => {
       el.centerLivePhaseBadge.classList.toggle('reveal', clk.phase === 'REVEAL');
     }
 
-    if (state.mode === 'live' && !state.isRolling && !state.isSqueezeActive && el.btnRollLabel) {
-      el.btnRollLabel.textContent = clk.phase === 'BETTING' ? `Đặt Cược Live (${sec}s)` : `Mở Bát (${sec}s)`;
+    const hasActiveTicket = Boolean(
+      state.liveTicket &&
+      !state.liveTicket.settled &&
+      state.liveTicket.liveRoundId === clk.liveRoundId &&
+      state.liveTicket.totalBet > 0
+    );
+    if (el.liveTicketBadge) {
+      if (hasActiveTicket) {
+        el.liveTicketBadge.textContent = `Đã chốt ${formatVND(state.liveTicket.totalBet)} ₫`;
+        el.liveTicketBadge.classList.remove('hidden');
+      } else {
+        el.liveTicketBadge.textContent = '';
+        el.liveTicketBadge.classList.add('hidden');
+      }
+    }
+
+    if (!state.isRolling && !state.isSqueezeActive && el.btnRollLabel) {
+      el.btnRollLabel.textContent = clk.phase === 'BETTING'
+        ? (hasActiveTicket ? `Cược Thêm (${sec}s)` : `Đặt Cược Live (${sec}s)`)
+        : `Mở Bát (${sec}s)`;
     }
     return clk;
   }
@@ -1580,7 +1608,6 @@ document.addEventListener('DOMContentLoaded', () => {
     stopLiveLoop();
     syncLiveStateFromServer(false);
     state.liveIntervalId = setInterval(() => {
-      if (state.mode !== 'live') return;
       const clk = updateLiveTimerUI();
 
       if (clk.phase === 'BETTING') {
@@ -1620,7 +1647,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (el.userBalance) el.userBalance.textContent = formatVND(state.displayedBalance);
     const totalWager = Object.values(state.currentBets).reduce((a, b) => a + b, 0);
     if (el.currentWagerSummary) {
-      el.currentWagerSummary.textContent = totalWager > 0 ? `${formatVND(totalWager)} ₫` : 'Lắc Thử';
+      const hasTicket = state.liveTicket && !state.liveTicket.settled && state.liveTicket.liveRoundId === state.liveRoundId && state.liveTicket.totalBet > 0;
+      el.currentWagerSummary.textContent = totalWager > 0
+        ? `${formatVND(totalWager)} ₫`
+        : (hasTicket ? `Đã chốt ${formatVND(state.liveTicket.totalBet)} ₫` : '0 ₫');
     }
     if (el.btnBankruptcyAid) {
       el.btnBankruptcyAid.disabled = state.balance >= 10000;
@@ -1628,11 +1658,15 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function updateFairnessCommitUI() {
-    const hash = state.provablyFair.nextServerSeedHash || '';
+    const hash = state.liveRoundSeedHash || state.provablyFair.nextServerSeedHash || '';
     const nonce = state.provablyFair.nextNonce ?? 1;
     if (el.nextHashPreview) el.nextHashPreview.textContent = truncateHash(hash);
-    if (el.nextNoncePreview) el.nextNoncePreview.textContent = `NONCE #${nonce}`;
-    if (el.inputNextHash) el.inputNextHash.value = hash;
+    if (el.nextNoncePreview) {
+      el.nextNoncePreview.textContent = typeof state.liveRoundId === 'number'
+        ? `LIVE #${state.liveRoundId}`
+        : `NONCE #${nonce}`;
+    }
+    if (el.inputNextHash) el.inputNextHash.value = state.provablyFair.nextServerSeedHash || hash;
     if (el.inputNextNonce) el.inputNextNonce.value = nonce;
     if (el.inputClientSeed && document.activeElement !== el.inputClientSeed) {
       el.inputClientSeed.value = state.provablyFair.clientSeed || 'sovereign-vip-888';
@@ -1737,7 +1771,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (Array.isArray(data.history) && data.history.length > 0) {
         state.history = data.history;
         const latest = data.history[data.history.length - 1];
-        if (el.roundCounterLabel) el.roundCounterLabel.textContent = `MACAU VIP • #${latest.id}`;
+        if (el.roundCounterLabel) el.roundCounterLabel.textContent = `MACAU LIVE • #${latest.id}`;
         if (!state.isRolling && !state.isSqueezeActive) {
           engine.setDiceFacesInstant(latest.dice);
         }
@@ -1762,10 +1796,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (pf.clientSeed) {
           state.provablyFair.clientSeed = pf.clientSeed;
         }
-        updateFairnessCommitUI();
         if (pf.lastRevealed) {
           populateVerifierInputs(pf.lastRevealed, false);
         }
+      }
+      if (data.live) {
+        if (data.live.roundSeedHash) state.liveRoundSeedHash = data.live.roundSeedHash;
+        if (typeof data.live.liveRoundId === 'number') state.liveRoundId = data.live.liveRoundId;
       }
       if (data.live || Array.isArray(data.unsettledLiveTickets)) {
         restoreLiveTicketFromServer(
@@ -1774,6 +1811,8 @@ document.addEventListener('DOMContentLoaded', () => {
           data.live ? data.live.liveRoundId : undefined
         );
       }
+      updateFairnessCommitUI();
+      updateLiveTimerUI();
       updateAuthUI();
       updateUI();
       if (data.user && !opts.skipPastSettle && data.live && typeof data.live.liveRoundId === 'number') {
@@ -1784,141 +1823,6 @@ document.addEventListener('DOMContentLoaded', () => {
       state.provablyFair.nextServerSeedHash = hash;
       updateFairnessCommitUI();
     }
-  }
-
-  async function localRollFallback(bets, clientSeed) {
-    const cleanBets = {};
-    let totalBet = 0;
-    for (const [k, v] of Object.entries(bets || {})) {
-      if (!ALLOWED_BET_KEYS.has(k)) continue;
-      if (typeof v === 'number' && Number.isSafeInteger(v) && v > 0 && v <= 1000000000) {
-        cleanBets[k] = v;
-        totalBet += v;
-      }
-    }
-
-    const revealedSeed = state.localPendingServerSeed;
-    const revealedHash = state.provablyFair.nextServerSeedHash || (await browserSha256Hex(revealedSeed));
-    const rawNonce = state.provablyFair.nextNonce ?? 1;
-    const parsedNonce = (rawNonce === '' || typeof rawNonce === 'boolean' || typeof rawNonce === 'symbol' || typeof rawNonce === 'object')
-      ? NaN
-      : Number(rawNonce);
-    const nonce = (Number.isSafeInteger(parsedNonce) && parsedNonce >= 0) ? (parsedNonce === 0 ? 0 : parsedNonce) : 1;
-    const fair = await deriveFairDice(revealedSeed, clientSeed, nonce);
-
-    const dice = fair.dice;
-    const [d1, d2, d3] = dice;
-    const total = d1 + d2 + d3;
-    const isTriple = (d1 === d2 && d2 === d3);
-    const outcome = isTriple ? 'TRIPLE' : (total >= 11 ? 'TAI' : 'XIU');
-    const isEven = (total % 2 === 0);
-    const counts = [0, 0, 0, 0, 0, 0, 0];
-    counts[d1]++; counts[d2]++; counts[d3]++;
-
-    let totalWin = 0;
-    const winningDetails = [];
-    const winningSpots = [];
-
-    for (const [betKey, betAmount] of Object.entries(cleanBets)) {
-      let winMultiplier = 0;
-      if (betKey === 'tai' && !isTriple && total >= 11 && total <= 17) winMultiplier = PAYOUT_RATES.tai;
-      else if (betKey === 'xiu' && !isTriple && total >= 4 && total <= 10) winMultiplier = PAYOUT_RATES.xiu;
-      else if (betKey === 'even' && !isTriple && isEven) winMultiplier = PAYOUT_RATES.even;
-      else if (betKey === 'odd' && !isTriple && !isEven) winMultiplier = PAYOUT_RATES.odd;
-      else if (betKey === 'triple_any' && isTriple) winMultiplier = PAYOUT_RATES.triple_any;
-      else if (betKey.startsWith('triple_')) {
-        const target = parseInt(betKey.split('_')[1], 10);
-        if (isTriple && d1 === target) winMultiplier = PAYOUT_RATES[betKey];
-      } else if (betKey.startsWith('double_')) {
-        const target = parseInt(betKey.split('_')[1], 10);
-        if (counts[target] >= 2) winMultiplier = PAYOUT_RATES[betKey] || 10;
-      } else if (betKey.startsWith('pair_')) {
-        const parts = betKey.split('_');
-        const a = parseInt(parts[1], 10);
-        const b = parseInt(parts[2], 10);
-        if (counts[a] >= 1 && counts[b] >= 1) winMultiplier = PAYOUT_RATES[betKey] || 5;
-      } else if (betKey.startsWith('total_')) {
-        const targetSum = parseInt(betKey.split('_')[1], 10);
-        if (total === targetSum) winMultiplier = PAYOUT_RATES[betKey] || 0;
-      } else if (betKey.startsWith('single_')) {
-        const targetFace = parseInt(betKey.split('_')[1], 10);
-        if (counts[targetFace] > 0) winMultiplier = counts[targetFace];
-      }
-
-      if (winMultiplier > 0) {
-        const profit = betAmount * winMultiplier;
-        const payout = betAmount + profit;
-        totalWin += payout;
-        winningSpots.push(betKey);
-        winningDetails.push({ betKey, amount: betAmount, multiplier: winMultiplier, profit, payout });
-      }
-    }
-
-    const newBalance = state.balance - totalBet + totalWin;
-    const netProfit = totalWin - totalBet;
-    const lastId = state.history.length > 0 ? state.history[state.history.length - 1].id : 1036;
-    const roundId = lastId + 1;
-
-    const revealedProof = {
-      roundId,
-      serverSeed: revealedSeed,
-      serverSeedHash: revealedHash,
-      clientSeed: fair.clientSeed,
-      nonce,
-      hmacHex: fair.hmacHex,
-      dice,
-      total,
-      outcome
-    };
-
-    const nextHistory = [...state.history, { id: roundId, dice, total, outcome, isTriple }];
-    if (nextHistory.length > 60) nextHistory.shift();
-
-    const nextPersonal = [...state.personalHistory];
-    if (totalBet > 0) {
-      nextPersonal.unshift({
-        roundId,
-        timestamp: new Date().toISOString(),
-        dice,
-        total,
-        outcome,
-        bets: cleanBets,
-        totalBet,
-        totalWin,
-        totalPayout: totalWin,
-        netProfit,
-        balanceAfter: newBalance,
-        fairness: revealedProof
-      });
-    }
-
-    state.localPendingServerSeed = randomHex(64);
-    const nextHash = await browserSha256Hex(state.localPendingServerSeed);
-    const nextNonce = nonce + 1;
-
-    return {
-      success: true,
-      spectator: totalBet === 0,
-      roundId,
-      dice,
-      total,
-      isTriple,
-      outcome,
-      totalBet,
-      totalWin,
-      totalPayout: totalWin,
-      netProfit,
-      winningDetails,
-      winningSpots,
-      newBalance,
-      history: nextHistory,
-      personalHistory: nextPersonal.slice(0, 30),
-      fairness: {
-        revealed: revealedProof,
-        nextServerSeedHash: nextHash,
-        nextNonce
-      }
-    };
   }
 
   // ==================== 8. CHIPS, STACKS, FLYING CHIPS, UNDO & REMOVE MODE ====================
@@ -2222,7 +2126,17 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Đã khóa sổ mở bát, vui lòng đợi phiên Live kế tiếp!', 'error');
         return false;
       }
-      if (!(await ensureGuestSessionIfNeeded(totalWager))) return false;
+      const hadUserSession = Boolean(state.user);
+      if (!(hadUserSession ? true : await ensureGuestSessionIfNeeded(totalWager))) return false;
+      if (totalWager > state.balance) {
+        showToast('Số dư không đủ để thực hiện cược này.', 'error');
+        return false;
+      }
+
+      if (window.triggerLiquidRollPulse) {
+        window.triggerLiquidRollPulse();
+      }
+      closeAllModals();
 
       const ikey = generateIdempotencyKey();
       const { res, json } = await apiFetch('/api/live/bet', {
@@ -2245,6 +2159,7 @@ document.addEventListener('DOMContentLoaded', () => {
       state.liveTicket = {
         liveRoundId: json.liveRoundId || clk.liveRoundId,
         totalBet: mergedTotalBet,
+        bets: (json.ticket && json.ticket.bets) ? { ...json.ticket.bets } : { ...state.currentBets },
         settled: Boolean(json.ticket && json.ticket.settled)
       };
       state.balance = json.newBalance;
@@ -2252,6 +2167,7 @@ document.addEventListener('DOMContentLoaded', () => {
       state.currentBets = {};
       state.betUndoStack = [];
       renderAllBetSpots();
+      updateLiveTimerUI();
       updateUI();
       showToast(`Đã chốt cược Live phiên #${state.liveTicket.liveRoundId} (${formatVND(totalWager)} ₫)!`, 'success');
       return true;
@@ -2266,108 +2182,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  async function startRoll(triggerMode = 'manual', _isRetry = false) {
+  async function startRoll(_triggerMode = 'live', _isRetry = false) {
     if (!_isRetry && (state.isRolling || state.isSubmittingRoll || state.isSqueezeActive)) return false;
 
     state.isSubmittingRoll = true;
     if (el.btnRoll) el.btnRoll.disabled = true;
-    let handedOffToAnimation = false;
-
     try {
       const totalWager = Object.values(state.currentBets).reduce((a, b) => a + b, 0);
-      const hadUserSession = Boolean(state.user);
-
-      if (triggerMode === 'live' || state.mode === 'live') {
-        await submitLiveBet(totalWager);
-        return false;
-      }
-
-      if (totalWager > 0) {
-        const ready = hadUserSession ? true : await ensureGuestSessionIfNeeded(totalWager);
-        if (!ready) return false;
-        if (totalWager > state.balance) {
-          showToast('Số dư không đủ để thực hiện cược này.', 'error');
-          return false;
-        }
-      }
-
-      if (window.triggerLiquidRollPulse) {
-        window.triggerLiquidRollPulse();
-      }
-
-      closeAllModals();
-
-      const clientSeed = (el.inputClientSeed?.value || 'sovereign-vip-888').trim() || 'sovereign-vip-888';
-      const preBalance = state.balance;
-      let data = null;
-
-      if (totalWager === 0) {
-        data = await localRollFallback({}, clientSeed);
-      } else {
-        const ikey = generateIdempotencyKey();
-        try {
-          const { res, json } = await apiFetch('/api/roll', {
-            method: 'POST',
-            idempotencyKey: ikey,
-            body: JSON.stringify({ bets: state.currentBets, clientSeed, mode: triggerMode })
-          });
-          if (!res.ok) {
-            if (res.status === 401) {
-              openAuthModal('authPaneLogin');
-              return false;
-            }
-            showToast((json && json.error) || `Không thể đặt cược (HTTP ${res.status}).`, 'error');
-            return false;
-          }
-          data = json;
-        } catch (_) {
-          data = await localRollFallback(state.currentBets, clientSeed);
-        }
-      }
-
-      if (state.balanceTween && typeof state.balanceTween.kill === 'function') {
-        state.balanceTween.kill();
-        state.balanceTween = null;
-      }
-      state.isBalanceTweening = false;
-
-      // Deduct wager on displayed balance BEFORE 3D shake/squeeze; hold winnings until reveal!
-      state.isRolling = true;
-      state.isSubmittingRoll = false;
-      handedOffToAnimation = true;
-      if (el.btnRoll) el.btnRoll.disabled = true;
-      if (el.btnRollLabel) el.btnRollLabel.textContent = 'Đang Lắc 3D...';
-      document.querySelectorAll('.bet-spot').forEach(s => s.classList.remove('winner'));
-
-      if (totalWager > 0) {
-        state.displayedBalance = Math.max(0, preBalance - totalWager);
-        updateUI();
-        state.lastBets = { ...state.currentBets };
-      }
-      state.betUndoStack = [];
-      state.pendingResult = data;
-
-      showStatus(
-        totalWager > 0
-          ? `Đang lắc 3 viên xúc xắc ngà voi (Tổng cược: ${formatVND(totalWager)} ₫)...`
-          : 'Đang lắc xúc xắc 3D (Phiên lắc thử / Quan sát cầu)...'
-      );
-
-      const useSqueeze = Boolean(el.chkSqueeze && el.chkSqueeze.checked) && state.mode !== 'live';
-
-      engine.shakeAndRoll(
-        data.dice,
-        () => sound.playDiceShake(),
-        () => onShakeComplete(useSqueeze),
-        (intensity) => sound.playDiceBounce(intensity),
-        useSqueeze
-      );
-      return true;
+      return await submitLiveBet(totalWager);
     } finally {
-      if (!handedOffToAnimation) {
-        state.isSubmittingRoll = false;
-        if (!state.isRolling && el.btnRoll) el.btnRoll.disabled = false;
-      }
+      state.isSubmittingRoll = false;
+      if (!state.isRolling && el.btnRoll) el.btnRoll.disabled = false;
     }
   }
 
@@ -2375,36 +2200,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (state.squeezeAutoOpenTimer) {
       clearTimeout(state.squeezeAutoOpenTimer);
       state.squeezeAutoOpenTimer = null;
-    }
-  }
-
-  function onShakeComplete(useSqueeze) {
-    if (useSqueeze) {
-      state.isSqueezeActive = true;
-      if (el.squeezePctLabel) el.squeezePctLabel.textContent = '0%';
-      if (el.squeezePrompt) el.squeezePrompt.classList.add('active');
-      if (el.btnRollLabel) el.btnRollLabel.textContent = 'Kéo Bát Để Mở...';
-      showStatus('Xúc xắc đã dừng! Nhấp giữ & kéo trượt ngang chiếc bát 3D để nặn hoặc nhấn Space.');
-
-      engine.callbacks.onSqueezeProgress = (progress) => {
-        const pct = Math.round(progress * 100);
-        if (el.squeezePctLabel) el.squeezePctLabel.textContent = `${pct}%`;
-        sound.playSqueezeTension(progress);
-      };
-
-      engine.callbacks.onBowlOpened = () => {
-        clearSqueezeAutoTimer();
-        finishReveal();
-      };
-
-      clearSqueezeAutoTimer();
-      state.squeezeAutoOpenTimer = setTimeout(() => {
-        if (state.isSqueezeActive) {
-          engine.openBowlQuick(() => finishReveal());
-        }
-      }, 8000);
-    } else {
-      engine.openBowlQuick(() => finishReveal());
     }
   }
 
@@ -2513,7 +2308,7 @@ document.addEventListener('DOMContentLoaded', () => {
       el.resBadgeOutcome.className = `outcome-pill ${String(res.outcome || '').toLowerCase()}`;
     }
     if (el.resBadgeTotal) el.resBadgeTotal.textContent = (res.dice || []).join('-');
-    if (el.roundCounterLabel) el.roundCounterLabel.textContent = `MACAU VIP • #${res.roundId}`;
+    if (el.roundCounterLabel) el.roundCounterLabel.textContent = `MACAU LIVE • #${res.roundId}`;
     if (el.resDiceStrip) {
       el.resDiceStrip.innerHTML = (res.dice || []).map(d => `<span>${DICE_SYMBOLS[Number(d)] || ''}</span>`).join(' ');
     }
@@ -2565,9 +2360,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     state.isRolling = false;
     if (el.btnRoll) el.btnRoll.disabled = false;
-    if (state.mode !== 'live' && el.btnRollLabel) {
-      el.btnRollLabel.textContent = 'Lắc Xúc Xắc';
-    }
+    updateLiveTimerUI();
 
     showStatus(`Phiên #${res.roundId}: [${(res.dice || []).join('-')}] = ${res.total} điểm (${outcomeLabel})`);
     fetchServerState();
@@ -3041,5 +2834,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.__sicboDeriveFairDice = deriveFairDice;
 
+  initLiveRoomUI();
   fetchServerState();
 });

@@ -6,6 +6,7 @@ const vm = require('node:vm');
 
 const {
   LIVE_ROUND_MS,
+  LIVE_BET_MS,
   referenceEvaluateRoll,
   webCryptoSha256Hex,
   webCryptoDeriveFairDice,
@@ -282,7 +283,7 @@ describe('Tier 3B — Cross-Feature Pairwise: Fairness, Live Clock & Lock/Aid Li
       const early = await client.post('/api/live/settle', { liveRoundId: roundId });
       assert.ok([400, 425].includes(early.status));
 
-      await clocked.setTime(roundStart + 15500);
+      await clocked.setTime(roundStart + LIVE_BET_MS + 500);
       const settle = await client.post('/api/live/settle', { liveRoundId: roundId });
       assert.equal(settle.status, 200);
       const expected = referenceEvaluateRoll(settle.json.dice, bets);
@@ -451,7 +452,7 @@ describe('Tier 3C — Cross-Feature Pairwise: Idempotency/Revocation, Breakeven,
       assert.equal(bet1.status, 200);
       assert.equal(bet2.status, 200);
 
-      await clocked.setTime(roundStart + 16000);
+      await clocked.setTime(roundStart + LIVE_BET_MS + 1000);
       const [s1, s2] = await Promise.all([
         p1.post('/api/live/settle', { liveRoundId: roundId }),
         p2.post('/api/live/settle', { liveRoundId: roundId }),

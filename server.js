@@ -18,6 +18,7 @@ const {
   getLiveRoundClock,
   deriveLiveRoundDice,
   computeLiveCommitmentHash,
+  deriveLiveRecentHistory,
   sha256Hex
 } = require('./lib/sicbo-engine');
 
@@ -766,8 +767,9 @@ function createApp(options = {}) {
     const db = resolveDb(cfg);
     const clock = getLiveRoundClock(nowFn());
     const roundSeedHash = computeLiveCommitmentHash(cfg.liveMasterSecret, clock.liveRoundId);
+    const liveHistory = deriveLiveRecentHistory(cfg.liveMasterSecret, clock, 60);
 
-    const globalHistory = await db.getGlobalHistory(60);
+    const globalHistory = liveHistory.length > 0 ? liveHistory : await db.getGlobalHistory(60);
 
     let ledger = [];
     let personalHistory = [];
@@ -785,7 +787,11 @@ function createApp(options = {}) {
 
     const livePayload = {
       ...clock,
+      roundDurationMs: cfg.LIVE_ROUND_MS,
+      betDurationMs: cfg.LIVE_BET_MS,
+      revealDurationMs: cfg.LIVE_REVEAL_MS,
       roundSeedHash,
+      recentHistory: liveHistory,
       ticket: currentTicket
     };
 
@@ -864,6 +870,7 @@ function createApp(options = {}) {
     const db = resolveDb(cfg);
     const clock = getLiveRoundClock(nowFn());
     const roundSeedHash = computeLiveCommitmentHash(cfg.liveMasterSecret, clock.liveRoundId);
+    const recentHistory = deriveLiveRecentHistory(cfg.liveMasterSecret, clock, 60);
 
     let ticket = null;
     let unsettledTickets = [];
@@ -876,7 +883,11 @@ function createApp(options = {}) {
 
     const payload = {
       ...clock,
+      roundDurationMs: cfg.LIVE_ROUND_MS,
+      betDurationMs: cfg.LIVE_BET_MS,
+      revealDurationMs: cfg.LIVE_REVEAL_MS,
       roundSeedHash,
+      recentHistory,
       ticket,
       unsettledTickets
     };
