@@ -59,8 +59,11 @@
     </div>
 
     <button id="btnOpenDrawer" class="pill-tab" data-dock>⛬ BÀN CƯỢC 180X</button>
-    <button id="btnOpenChronicles" class="pill-tab" data-dock>📜 CẦU DÂY &amp; FAIR</button>
-    <button id="btnTopup" class="pill-tab" data-dock>+5M CHIP</button>
+    <button id="btnOpenChronicles" class="pill-tab" data-dock>📜 CẦU &amp; FAIR</button>
+    <button id="btnOpenLeaderboard" class="pill-tab" data-dock title="Bảng Xếp Hạng Đại Gia">🏆 XẾP HẠNG</button>
+    <button id="btnOpenRules" class="pill-tab" data-dock title="Luật Sicbo Macau &amp; Tỷ lệ">? Luật &amp; Tỷ lệ</button>
+    <button id="btnDailyBonus" class="pill-tab pill-bonus" data-dock title="Điểm danh mỗi 24h nhận +2,000,000 ₫">🎁 +2M</button>
+    <button id="btnBankruptcyAid" class="pill-tab pill-aid" data-dock title="Trợ cấp phá sản +500,000 ₫ (khi &lt; 10,000 ₫)">🆘 +500K</button>
 
     <div class="pill-vault" data-dock>
       <span class="vault-dot"></span>
@@ -68,44 +71,42 @@
       <span class="vault-curr">₫</span>
     </div>
 
+    <button id="btnAuthModal" class="pill-auth-btn" data-dock title="Tài khoản &amp; Bảo mật">
+      <span id="navUserBadge">Đăng nhập</span>
+    </button>
+    <button id="btnOpenAdmin" class="pill-tab pill-admin hidden" data-dock title="Quản trị Salon (Admin)">⚙ ADMIN</button>
+
+    <select id="selectGraphicsQuality" class="pill-select" data-dock aria-label="Chất lượng đồ họa" title="Chất lượng đồ họa 3D">
+      <option value="high">Đồ họa: Cao</option>
+      <option value="balanced">Đồ họa: Cân bằng</option>
+      <option value="eco">Đồ họa: Tiết kiệm pin</option>
+    </select>
+
     <button id="btnAudioToggle" class="pill-enter-btn" data-dock>
       <span class="audio-text">SOUND</span>
     </button>
   </header>
 
-  <!-- Center-Stage Live 15s Auto-Roll Floating HUD Banner -->
+  <!-- Center-Stage Deterministic Live 20s Floating HUD Banner -->
   <div id="centerLiveBanner" class="center-live-banner">
     <span class="live-pulse-beacon"></span>
-    <span id="centerLiveText" class="center-live-text">PHÒNG LIVE TỰ ĐỘNG • TỰ LẮC SAU <strong id="centerLiveSec">15s</strong></span>
-    <button id="btnCenterRollNow" class="btn-center-live-now">Lắc Ngay</button>
+    <span id="centerLiveText" class="center-live-text">PHÒNG LIVE • PHIÊN #<strong id="centerLiveRoundId">-</strong> • <strong id="centerLiveSec">15s</strong></span>
+    <span id="centerLivePhaseBadge" class="live-phase-badge">NHẬN CƯỢC</span>
   </div>
 
-  <!-- ==================== 2. LEFT EDITORIAL HERO, LIQUID-METAL CTA & MAIN BETTING ==================== -->
+  <!-- ==================== 2. LEFT LIQUID-METAL CTA & MAIN BETTING ==================== -->
   <aside class="editorial-left-wing">
     <div class="editorial-top-cluster">
-      <div class="editorial-hero-block">
-        <h1 class="display-heading">
-          Step into<br>
-          the private salon
-        </h1>
-
-        <div class="editorial-sub-col">
-          <p class="editorial-lead">
-            Ba viên xúc xắc ngà voi phủ sứ bo góc thủ công, phản chiếu ánh sáng Studio HDRI và kiểm chứng công bằng SHA-256.
-          </p>
-
-          <!-- ThreeUI Authentic 5-Pass WebGL2 Liquid-Metal Dispersion CTA -->
-          <div class="hero-cta-row">
-            <div class="liquid-stage" data-liquid-metal="explore">
-              <div class="liquid-plate" data-spec></div>
-              <canvas class="liquid-fx" aria-hidden="true"></canvas>
-              <button id="btnRoll" class="liquid-button">
-                <span class="live-emerald-dot"></span>
-                <span id="btnRollLabel" class="btn-roll-label">Lắc Xúc Xắc</span>
-                <span id="currentWagerSummary" class="wager-tag">0 ₫</span>
-              </button>
-            </div>
-          </div>
+      <!-- ThreeUI Authentic 5-Pass WebGL2 Liquid-Metal Dispersion CTA -->
+      <div class="hero-cta-row">
+        <div class="liquid-stage" data-liquid-metal="explore">
+          <div class="liquid-plate" data-spec></div>
+          <canvas class="liquid-fx" aria-hidden="true"></canvas>
+          <button id="btnRoll" class="liquid-button">
+            <span class="live-emerald-dot"></span>
+            <span id="btnRollLabel" class="btn-roll-label">Lắc Xúc Xắc</span>
+            <span id="currentWagerSummary" class="wager-tag">0 ₫</span>
+          </button>
         </div>
       </div>
 
@@ -325,18 +326,20 @@
     <!-- Center Tactile Ceramic Chips & Quick Actions -->
     <div class="hud-center-dock" data-spec>
       <div class="chips-palette" id="chipsSelector">
-        <div class="zen-chip active" data-val="10000">10K</div>
-        <div class="zen-chip" data-val="50000">50K</div>
-        <div class="zen-chip" data-val="100000">100K</div>
-        <div class="zen-chip" data-val="500000">500K</div>
-        <div class="zen-chip" data-val="1000000">1M</div>
-        <div class="zen-chip" data-val="5000000">5M</div>
+        <div class="zen-chip chip-10k active" data-val="10000">10K</div>
+        <div class="zen-chip chip-50k" data-val="50000">50K</div>
+        <div class="zen-chip chip-100k" data-val="100000">100K</div>
+        <div class="zen-chip chip-500k" data-val="500000">500K</div>
+        <div class="zen-chip chip-1m" data-val="1000000">1M</div>
+        <div class="zen-chip chip-5m" data-val="5000000">5M</div>
         <div class="zen-chip chip-allin" id="chipAllIn">ALL</div>
       </div>
 
       <div class="dock-divider"></div>
 
       <div class="quick-bet-actions">
+        <button id="btnUndo" class="btn-hud-minimal" title="Hoàn tác bước đặt phỉnh vừa rồi">↩ Hoàn tác</button>
+        <button id="btnRemoveMode" class="btn-hud-minimal" title="Bật/tắt chế độ gỡ từng phỉnh">− Gỡ cửa</button>
         <button id="btnClear" class="btn-hud-minimal">Hủy</button>
         <button id="btnDouble" class="btn-hud-minimal">x2</button>
         <button id="btnRebet" class="btn-hud-minimal">Cược Lại</button>
@@ -409,6 +412,41 @@
           <div class="bet-spot pip-card" data-bet="single_6">⚅ Lục<div class="spot-chip-pile" id="chipPile_single_6"></div><div class="wager-chip-counter" id="wager_single_6"></div></div>
         </div>
       </div>
+
+      <!-- Đôi đồng nhất -->
+      <div class="drawer-section">
+        <span class="drawer-label">ĐÔI ĐỒNG NHẤT (ĐẶT 1 ĂN 10)</span>
+        <div class="doubles-matrix">
+          <div class="bet-spot mini-card" data-bet="double_1">⚀ ⚀<span>1-1 • 1:10</span><div class="spot-chip-pile" id="chipPile_double_1"></div><div class="wager-chip-counter" id="wager_double_1"></div></div>
+          <div class="bet-spot mini-card" data-bet="double_2">⚁ ⚁<span>2-2 • 1:10</span><div class="spot-chip-pile" id="chipPile_double_2"></div><div class="wager-chip-counter" id="wager_double_2"></div></div>
+          <div class="bet-spot mini-card" data-bet="double_3">⚂ ⚂<span>3-3 • 1:10</span><div class="spot-chip-pile" id="chipPile_double_3"></div><div class="wager-chip-counter" id="wager_double_3"></div></div>
+          <div class="bet-spot mini-card" data-bet="double_4">⚃ ⚃<span>4-4 • 1:10</span><div class="spot-chip-pile" id="chipPile_double_4"></div><div class="wager-chip-counter" id="wager_double_4"></div></div>
+          <div class="bet-spot mini-card" data-bet="double_5">⚄ ⚄<span>5-5 • 1:10</span><div class="spot-chip-pile" id="chipPile_double_5"></div><div class="wager-chip-counter" id="wager_double_5"></div></div>
+          <div class="bet-spot mini-card" data-bet="double_6">⚅ ⚅<span>6-6 • 1:10</span><div class="spot-chip-pile" id="chipPile_double_6"></div><div class="wager-chip-counter" id="wager_double_6"></div></div>
+        </div>
+      </div>
+
+      <!-- Cặp 2 số khác nhau (Domino) -->
+      <div class="drawer-section">
+        <span class="drawer-label">CẶP 2 SỐ KHÁC NHAU • DOMINO (ĐẶT 1 ĂN 5)</span>
+        <div class="pairs-matrix">
+          <div class="bet-spot pair-card" data-bet="pair_1_2">⚀ ⚁<span>1-2 • 1:5</span><div class="spot-chip-pile" id="chipPile_pair_1_2"></div><div class="wager-chip-counter" id="wager_pair_1_2"></div></div>
+          <div class="bet-spot pair-card" data-bet="pair_1_3">⚀ ⚂<span>1-3 • 1:5</span><div class="spot-chip-pile" id="chipPile_pair_1_3"></div><div class="wager-chip-counter" id="wager_pair_1_3"></div></div>
+          <div class="bet-spot pair-card" data-bet="pair_1_4">⚀ ⚃<span>1-4 • 1:5</span><div class="spot-chip-pile" id="chipPile_pair_1_4"></div><div class="wager-chip-counter" id="wager_pair_1_4"></div></div>
+          <div class="bet-spot pair-card" data-bet="pair_1_5">⚀ ⚄<span>1-5 • 1:5</span><div class="spot-chip-pile" id="chipPile_pair_1_5"></div><div class="wager-chip-counter" id="wager_pair_1_5"></div></div>
+          <div class="bet-spot pair-card" data-bet="pair_1_6">⚀ ⚅<span>1-6 • 1:5</span><div class="spot-chip-pile" id="chipPile_pair_1_6"></div><div class="wager-chip-counter" id="wager_pair_1_6"></div></div>
+          <div class="bet-spot pair-card" data-bet="pair_2_3">⚁ ⚂<span>2-3 • 1:5</span><div class="spot-chip-pile" id="chipPile_pair_2_3"></div><div class="wager-chip-counter" id="wager_pair_2_3"></div></div>
+          <div class="bet-spot pair-card" data-bet="pair_2_4">⚁ ⚃<span>2-4 • 1:5</span><div class="spot-chip-pile" id="chipPile_pair_2_4"></div><div class="wager-chip-counter" id="wager_pair_2_4"></div></div>
+          <div class="bet-spot pair-card" data-bet="pair_2_5">⚁ ⚄<span>2-5 • 1:5</span><div class="spot-chip-pile" id="chipPile_pair_2_5"></div><div class="wager-chip-counter" id="wager_pair_2_5"></div></div>
+          <div class="bet-spot pair-card" data-bet="pair_2_6">⚁ ⚅<span>2-6 • 1:5</span><div class="spot-chip-pile" id="chipPile_pair_2_6"></div><div class="wager-chip-counter" id="wager_pair_2_6"></div></div>
+          <div class="bet-spot pair-card" data-bet="pair_3_4">⚂ ⚃<span>3-4 • 1:5</span><div class="spot-chip-pile" id="chipPile_pair_3_4"></div><div class="wager-chip-counter" id="wager_pair_3_4"></div></div>
+          <div class="bet-spot pair-card" data-bet="pair_3_5">⚂ ⚄<span>3-5 • 1:5</span><div class="spot-chip-pile" id="chipPile_pair_3_5"></div><div class="wager-chip-counter" id="wager_pair_3_5"></div></div>
+          <div class="bet-spot pair-card" data-bet="pair_3_6">⚂ ⚅<span>3-6 • 1:5</span><div class="spot-chip-pile" id="chipPile_pair_3_6"></div><div class="wager-chip-counter" id="wager_pair_3_6"></div></div>
+          <div class="bet-spot pair-card" data-bet="pair_4_5">⚃ ⚄<span>4-5 • 1:5</span><div class="spot-chip-pile" id="chipPile_pair_4_5"></div><div class="wager-chip-counter" id="wager_pair_4_5"></div></div>
+          <div class="bet-spot pair-card" data-bet="pair_4_6">⚃ ⚅<span>4-6 • 1:5</span><div class="spot-chip-pile" id="chipPile_pair_4_6"></div><div class="wager-chip-counter" id="wager_pair_4_6"></div></div>
+          <div class="bet-spot pair-card" data-bet="pair_5_6">⚄ ⚅<span>5-6 • 1:5</span><div class="spot-chip-pile" id="chipPile_pair_5_6"></div><div class="wager-chip-counter" id="wager_pair_5_6"></div></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -428,6 +466,7 @@
         <button class="chron-tab active" data-tab="tabBigRoad">01 • Bảng Cầu Dây (Big Road)</button>
         <button class="chron-tab" data-tab="tabPersonal">02 • Lịch Sử Cược Cá Nhân</button>
         <button class="chron-tab" data-tab="tabFairness">03 • Kiểm Chứng SHA-256</button>
+        <button class="chron-tab" data-tab="tabWalletLedger">04 • Sổ Cái Giao Dịch</button>
       </div>
 
       <!-- TAB 1: BIG ROAD (CẦU DÂY MACAU) -->
@@ -509,13 +548,17 @@
             <div class="fair-field-row">
               <div class="fair-field">
                 <label>Client Seed của bạn (Tùy chỉnh tự do)</label>
-                <input id="inputClientSeed" type="text" value="sovereign-vip-888">
+                <div class="fair-copy-row">
+                  <input id="inputClientSeed" type="text" value="sovereign-vip-888">
+                  <button id="btnRotateClientSeed" class="btn-fair-sm" type="button">Đổi Client Seed</button>
+                </div>
               </div>
               <div class="fair-field fair-field-narrow">
                 <label>Next Nonce</label>
                 <input id="inputNextNonce" type="text" readonly value="1">
               </div>
             </div>
+            <div id="rotatedSeedRevealBox" class="rotated-seed-box hidden"></div>
           </div>
 
           <!-- Right: Revealed Seed & Independent SHA-256 Verifier -->
@@ -546,8 +589,297 @@
           </div>
         </div>
       </div>
+
+      <!-- TAB 4: WALLET LEDGER (SỔ CÁI GIAO DỊCH) -->
+      <div id="tabWalletLedger" class="chron-pane">
+        <div class="ledger-table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Thời gian</th>
+                <th>Loại GD</th>
+                <th>Số dư trước</th>
+                <th>Biến động</th>
+                <th>Số dư sau</th>
+                <th>Ghi chú</th>
+              </tr>
+            </thead>
+            <tbody id="walletLedgerBody">
+              <tr>
+                <td colspan="6" class="empty-ledger-cell">Đăng nhập để xem sổ cái giao dịch tài chính.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
+
+  <!-- ==================== 7. AUTHENTICATION, GUEST & RECOVERY MODAL ==================== -->
+  <div id="authModal" class="matrix-drawer-backdrop">
+    <div class="matrix-drawer-card auth-card">
+      <div class="drawer-header">
+        <div>
+          <span class="micro-mono">SOVEREIGN SALON MEMBERSHIP</span>
+          <h3>Tài Khoản &amp; Bảo Mật Hội Viên</h3>
+        </div>
+        <button id="btnCloseAuth" class="btn-close-drawer">✕ Đóng</button>
+      </div>
+
+      <p class="modal-welcome-lead">
+        Chào mừng đến với <strong>SOVEREIGN • Private 3D Sicbo Salon</strong> — Ba viên xúc xắc ngà voi phủ sứ bo góc thủ công, ánh sáng Studio HDRI và kiểm chứng công bằng HMAC-SHA256.
+      </p>
+
+      <div class="chronicles-tabs">
+        <button class="chron-tab auth-tab active" data-auth-pane="authPaneLogin">Đăng nhập</button>
+        <button class="chron-tab auth-tab" data-auth-pane="authPaneRegister">Đăng ký</button>
+        <button class="chron-tab auth-tab" data-auth-pane="authPaneRecover">Khôi phục MK</button>
+        <button class="chron-tab auth-tab hidden" id="tabBtnProfile" data-auth-pane="authPaneProfile">Hồ sơ &amp; Đổi MK</button>
+      </div>
+
+      <!-- Pane: Login -->
+      <div id="authPaneLogin" class="auth-pane active">
+        <div class="fair-field">
+          <label for="loginUsername">Tên đăng nhập</label>
+          <input id="loginUsername" type="text" autocomplete="username" placeholder="Nhập username...">
+        </div>
+        <div class="fair-field">
+          <label for="loginPassword">Mật khẩu</label>
+          <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Nhập mật khẩu...">
+        </div>
+        <div class="auth-actions-row">
+          <button id="btnLoginSubmit" class="btn-run-verify" type="button">Đăng Nhập Salon</button>
+          <button id="btnPlayAsGuest" class="btn-fair-sm" type="button">Chơi Thử Khách • +2,000,000 ₫</button>
+        </div>
+      </div>
+
+      <!-- Pane: Register -->
+      <div id="authPaneRegister" class="auth-pane">
+        <div class="fair-field-row">
+          <div class="fair-field">
+            <label for="regUsername">Tên đăng nhập (3–24 ký tự)</label>
+            <input id="regUsername" type="text" autocomplete="username" placeholder="vd: vip_macau">
+          </div>
+          <div class="fair-field">
+            <label for="regDisplayName">Tên hiển thị (tùy chọn)</label>
+            <input id="regDisplayName" type="text" placeholder="vd: Hoàng Gia VIP">
+          </div>
+        </div>
+        <div class="fair-field">
+          <label for="regPassword">Mật khẩu (tối thiểu 6 ký tự)</label>
+          <input id="regPassword" type="password" autocomplete="new-password" placeholder="Nhập mật khẩu mạnh...">
+        </div>
+        <button id="btnRegisterSubmit" class="btn-run-verify" type="button">Tạo Tài Khoản (+10,000,000 ₫)</button>
+      </div>
+
+      <!-- One-time Recovery Code Reveal Box -->
+      <div id="recoveryCodeRevealBox" class="recovery-reveal-box hidden">
+        <div class="recovery-reveal-head">
+          <strong>🔐 MÃ KHÔI PHỤC TÀI KHOẢN (CHỈ HIỆN 1 LẦN DUY NHẤT)</strong>
+          <button id="btnCopyRecoveryCode" class="btn-fair-sm" type="button">Copy Mã</button>
+        </div>
+        <code id="recoveryCodeValue" class="recovery-code-value"></code>
+        <p class="recovery-note">Hãy lưu mã này ở nơi an toàn. Bạn cần mã này để đặt lại mật khẩu nếu quên.</p>
+      </div>
+
+      <!-- Pane: Recover Password -->
+      <div id="authPaneRecover" class="auth-pane">
+        <div class="fair-field-row">
+          <div class="fair-field">
+            <label for="recoverUsername">Tên đăng nhập</label>
+            <input id="recoverUsername" type="text" placeholder="Username cần khôi phục...">
+          </div>
+          <div class="fair-field">
+            <label for="recoverCode">Recovery Code</label>
+            <input id="recoverCode" type="text" placeholder="Nhập Recovery Code...">
+          </div>
+        </div>
+        <div class="fair-field">
+          <label for="recoverNewPassword">Mật khẩu mới</label>
+          <input id="recoverNewPassword" type="password" autocomplete="new-password" placeholder="Nhập mật khẩu mới...">
+        </div>
+        <button id="btnRecoverSubmit" class="btn-run-verify" type="button">Khôi Phục &amp; Đặt Lại Mật Khẩu</button>
+      </div>
+
+      <!-- Pane: Profile, Guest Upgrade & Change Password -->
+      <div id="authPaneProfile" class="auth-pane">
+        <div class="profile-summary-bar">
+          <div id="profileSummaryText" class="profile-summary-text">Chưa đăng nhập.</div>
+          <button id="btnLogout" class="btn-fair-sm btn-danger-sm" type="button">Đăng Xuất</button>
+        </div>
+
+        <div id="authUpgradePanel" class="fair-box hidden">
+          <span class="drawer-label">NÂNG CẤP TÀI KHOẢN KHÁCH (GIỮ NGUYÊN SỐ DƯ &amp; LỊCH SỬ)</span>
+          <div class="fair-field-row">
+            <div class="fair-field">
+              <label for="upgradeUsername">Tên đăng nhập mới</label>
+              <input id="upgradeUsername" type="text" placeholder="Username chính thức...">
+            </div>
+            <div class="fair-field">
+              <label for="upgradeDisplayName">Tên hiển thị</label>
+              <input id="upgradeDisplayName" type="text" placeholder="Tên hiển thị...">
+            </div>
+          </div>
+          <div class="fair-field">
+            <label for="upgradePassword">Mật khẩu</label>
+            <input id="upgradePassword" type="password" autocomplete="new-password" placeholder="Mật khẩu mới...">
+          </div>
+          <button id="btnUpgradeGuestSubmit" class="btn-run-verify" type="button">Nâng Cấp Tài Khoản • Giữ Số Dư &amp; Lịch Sử</button>
+        </div>
+
+        <div id="authChangePasswordPanel" class="fair-box">
+          <span class="drawer-label">ĐỔI MẬT KHẨU (THU HỒI TOÀN BỘ PHIÊN CŨ)</span>
+          <div class="fair-field-row">
+            <div class="fair-field">
+              <label for="cpCurrentPassword">Mật khẩu hiện tại</label>
+              <input id="cpCurrentPassword" type="password" autocomplete="current-password" placeholder="Mật khẩu hiện tại...">
+            </div>
+            <div class="fair-field">
+              <label for="cpNewPassword">Mật khẩu mới</label>
+              <input id="cpNewPassword" type="password" autocomplete="new-password" placeholder="Mật khẩu mới...">
+            </div>
+          </div>
+          <button id="btnChangePasswordSubmit" class="btn-run-verify" type="button">Đổi Mật Khẩu</button>
+        </div>
+      </div>
+
+      <div id="authFormFeedback" class="auth-feedback hidden"></div>
+    </div>
+  </div>
+
+  <!-- ==================== 8. ADMIN OPS MODAL ==================== -->
+  <div id="adminModal" class="matrix-drawer-backdrop">
+    <div class="matrix-drawer-card chronicles-card">
+      <div class="drawer-header">
+        <div>
+          <span class="micro-mono">ADMIN OPERATIONS • RBAC CONSOLE</span>
+          <h3>Quản Trị Hội Viên &amp; Sổ Cái Chip</h3>
+        </div>
+        <button id="btnCloseAdmin" class="btn-close-drawer">✕ Đóng</button>
+      </div>
+
+      <div class="fair-copy-row">
+        <input id="adminSearchInput" class="admin-input" type="text" placeholder="Tìm theo username hoặc tên hiển thị...">
+        <button id="btnAdminSearch" class="btn-fair-sm" type="button">Tìm Kiếm</button>
+      </div>
+
+      <div class="fair-box">
+        <span class="drawer-label">ĐIỀU CHỈNH SỐ DƯ CHIP CÓ LÝ DO (GHI SỔ CÁI)</span>
+        <div class="fair-field-row">
+          <div class="fair-field">
+            <label for="adminAdjustUserId">User ID</label>
+            <input id="adminAdjustUserId" type="text" placeholder="Chọn từ bảng hoặc nhập ID...">
+          </div>
+          <div class="fair-field">
+            <label for="adminAdjustAmount">Số tiền (+ cộng / - trừ)</label>
+            <input id="adminAdjustAmount" type="number" placeholder="vd: 1000000 hoặc -500000">
+          </div>
+          <div class="fair-field">
+            <label for="adminAdjustReason">Lý do điều chỉnh</label>
+            <input id="adminAdjustReason" type="text" placeholder="vd: Thưởng sự kiện VIP">
+          </div>
+          <button id="btnAdminAdjustSubmit" class="btn-run-verify" type="button">Áp Dụng</button>
+        </div>
+      </div>
+
+      <div id="adminActionResult" class="verify-result-box hidden"></div>
+
+      <div class="ledger-table-wrap">
+        <table class="ledger-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Username</th>
+              <th>Tên</th>
+              <th>Role</th>
+              <th>Số dư</th>
+              <th>Trạng thái</th>
+              <th>Thao tác</th>
+            </tr>
+          </thead>
+          <tbody id="adminUsersTableBody">
+            <tr><td colspan="7" class="empty-ledger-cell">Đang tải danh sách hội viên...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 9. LEADERBOARD MODAL ==================== -->
+  <div id="leaderboardModal" class="matrix-drawer-backdrop">
+    <div class="matrix-drawer-card">
+      <div class="drawer-header">
+        <div>
+          <span class="micro-mono">SALON HALL OF FAME</span>
+          <h3>Bảng Xếp Hạng Đại Gia</h3>
+        </div>
+        <button id="btnCloseLeaderboard" class="btn-close-drawer">✕ Đóng</button>
+      </div>
+
+      <div class="chronicles-tabs">
+        <button id="btnLbByBalance" class="chron-tab active" type="button">🏆 Top Số Dư</button>
+        <button id="btnLbByProfit" class="chron-tab" type="button">📈 Top Tổng Lãi Ròng</button>
+      </div>
+
+      <div class="ledger-table-wrap">
+        <table class="ledger-table">
+          <thead>
+            <tr>
+              <th>Hạng</th>
+              <th>Hội Viên</th>
+              <th>Số Dư</th>
+              <th>Tổng Lãi Ròng</th>
+              <th>Số Ván</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboardTableBody">
+            <tr><td colspan="5" class="empty-ledger-cell">Đang tải bảng xếp hạng...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 10. RULES & PAYOUT MODAL ==================== -->
+  <div id="rulesModal" class="matrix-drawer-backdrop">
+    <div class="matrix-drawer-card">
+      <div class="drawer-header">
+        <div>
+          <span class="micro-mono">MACAU VIP RULES &amp; PROVABLY FAIR</span>
+          <h3>Luật Chơi Sicbo Macau &amp; Tỷ Lệ Trả Thưởng</h3>
+        </div>
+        <button id="btnCloseRules" class="btn-close-drawer">✕ Đóng</button>
+      </div>
+
+      <div class="rules-grid">
+        <div class="fair-box">
+          <span class="drawer-label">1. TỶ LỆ TRẢ THƯỞNG CHUẨN MACAU</span>
+          <ul class="rules-list">
+            <li><strong>Tài (11–17) / Xỉu (4–10) / Chẵn / Lẻ:</strong> <code>1:1</code> — <em>Lưu ý: Nếu ra Bão (3 mặt giống nhau), cả Tài/Xỉu/Chẵn/Lẻ đều thua.</em></li>
+            <li><strong>Bão Bất Kỳ (Any Triple):</strong> <code>1:30</code> — 3 viên xúc xắc ra cùng một số bất kỳ (1-1-1 đến 6-6-6).</li>
+            <li><strong>Bão Cụ Thể (Specific Triple):</strong> <code>1:180</code> — 3 viên ra đúng mặt đã chọn.</li>
+            <li><strong>Đôi Đồng Nhất (Double 1–6):</strong> <code>1:10</code> — Mặt đã chọn xuất hiện từ 2 lần trở lên (bao gồm cả Bão).</li>
+            <li><strong>Cặp 2 Số Khác Nhau (Domino 15 cặp):</strong> <code>1:5</code> — Cả 2 mặt đã chọn cùng xuất hiện trong 3 viên.</li>
+            <li><strong>Tổng Điểm Chính Xác (4–17):</strong> <code>1:6</code> (9–12), <code>1:8</code> (8,13), <code>1:12</code> (7,14), <code>1:18</code> (6,15), <code>1:30</code> (5,16), <code>1:60</code> (4,17) — Trả thưởng khi tổng điểm khớp (kể cả khi ra Bão).</li>
+            <li><strong>Đơn Xúc Xắc (Single 1–6):</strong> Trúng 1 mặt <code>1:1</code>, 2 mặt <code>1:2</code>, 3 mặt <code>1:3</code>.</li>
+          </ul>
+        </div>
+        <div class="fair-box">
+          <span class="drawer-label">2. CÔNG BẰNG HMAC-SHA256 &amp; THAO TÁC SALON</span>
+          <ul class="rules-list">
+            <li><strong>Chứng minh công bằng:</strong> Sử dụng <code>HMAC-SHA256(serverSeed, clientSeed:nonce)</code> kết hợp rejection sampling <code>byte &lt; 252</code> đảm bảo xác suất đều tuyệt đối 1/6.</li>
+            <li><strong>Đổi Client Seed:</strong> Nhấn <code>Đổi Client Seed</code> để mở khóa <code>Server Seed</code> cũ và kiểm chứng toàn bộ lịch sử.</li>
+            <li><strong>Thao tác phỉnh:</strong> Nhấn để đặt, <code>Chuột phải</code> hoặc bật <code>− Gỡ cửa</code> để trừ từng cửa, <code>↩ Hoàn tác</code> để quay lại bước trước.</li>
+            <li><strong>Nặn Bát 3D &amp; Phòng Live:</strong> Bật <code>Nặn Bát 3D</code> để tự kéo trượt nắp bát; chế độ <code>⚡ LIVE</code> đồng bộ phiên 20 giây (15s nhận cược + 5s khóa sổ mở bát).</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global Toast & Result Banner Overlays -->
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+  <div id="roundResultBanner" class="round-result-banner" aria-live="polite"></div>
 
   <script src="audio.js"></script>
   <script src="three-engine.js"></script>

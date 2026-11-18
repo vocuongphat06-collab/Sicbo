@@ -36,6 +36,18 @@ class Sicbo3DEngine {
     this.bowlOffset = { x: 0, z: 0 };
     this.dragStartOffset = { x: 0, z: 0 };
     this.squeezeZoom = 0;
+    this.isSqueezeOpaque = false;
+    this.keyLight = null;
+    this._bokehDummy = new THREE.Object3D();
+    this.bokehMaxCount = 150;
+
+    this.rafId = null;
+    this.isPaused = (typeof document !== 'undefined') ? Boolean(document.hidden) : false;
+    this.graphicsQuality = 'high';
+    this._maxDpr = 1.5;
+    this.minFrameIntervalMs = 0;
+    this.activeMinFrameIntervalMs = 0;
+    this.lastRenderTime = 0;
 
     this.callbacks = {};
 
@@ -98,6 +110,13 @@ class Sicbo3DEngine {
     // 10. 150 Golden Spotlight Bokeh & Dust Motes
     this.buildGoldenBokeh();
 
+    let savedQuality = 'high';
+    try {
+      const q = localStorage.getItem('sicbo_graphics_quality');
+      if (q === 'high' || q === 'balanced' || q === 'eco') savedQuality = q;
+    } catch (_) {}
+    this.setGraphicsQuality(savedQuality);
+
     // 11. Interaction Events
     window.addEventListener('resize', () => this.onResize());
     window.addEventListener('mousemove', (e) => this.onMouseMove(e));
@@ -105,7 +124,14 @@ class Sicbo3DEngine {
 
     // 12. Main Render & Physics Loop
     this.animate = this.animate.bind(this);
-    requestAnimationFrame(this.animate);
+    this._onVisibilityChange = () => {
+      if (document.hidden) this.pause();
+      else this.resume();
+    };
+    document.addEventListener('visibilitychange', this._onVisibilityChange);
+    if (!document.hidden) {
+      this.rafId = requestAnimationFrame(this.animate);
+    }
   }
 
   setupStudioEnvironment() {
@@ -155,6 +181,7 @@ class Sicbo3DEngine {
     this.scene.add(hemiLight);
 
     const keyLight = new THREE.DirectionalLight(0xfff2dc, 2.2);
+    this.keyLight = keyLight;
     keyLight.position.set(6.5, 21, 11.5);
     keyLight.castShadow = true;
     keyLight.shadow.mapSize.width = 1024;
@@ -752,9 +779,10 @@ class Sicbo3DEngine {
   }
 
   updateBokehAndProps(time) {
-    if (this.bokehMesh) {
-      const dummy = new THREE.Object3D();
-      for (let i = 0; i < this.bokehData.length; i++) {
+    if (this.bokehMesh && this.bokehMesh.visible && this.bokehMaxCount > 0) {
+      const dummy = this._bokehDummy;
+      const limit = Math.min(this.bokehMaxCount, this.bokehData.length);
+      for (let i = 0; i < limit; i++) {
         const b = this.bokehData[i];
         b.y += b.speedY;
         if (b.y > 14) {
@@ -818,8 +846,66 @@ class Sicbo3DEngine {
     });
   }
 
+  setContainerTouchLock(locked) {
+    if (this.container) {
+      this.container.style.touchAction = locked ? 'none' : '';
+      this.container.classList.toggle('is-squeezing', Boolean(locked));
+    }
+  }
+
+  setGraphicsQuality(mode) {
+    const valid = (mode === 'high' || mode === 'balanced' || mode === 'eco') ? mode : 'high';
+    this.graphicsQuality = valid;
+    if (typeof document !== 'undefined' && document.documentElement) {
+      document.documentElement.dataset.graphicsQuality = valid;
+    }
+
+    const dpr = window.devicePixelRatio || 1;
+    let maxDpr = 1.5;
+    let shadowsOn = true;
+    let bokehCount = 150;
+    let idleIntervalMs = 0;
+    let activeIntervalMs = 0;
+
+    if (valid === 'balanced') {
+      maxDpr = 1.15;
+      shadowsOn = true;
+      bokehCount = 60;
+      idleIntervalMs = 1000 / 45;
+      activeIntervalMs = 0;
+    } else if (valid === 'eco') {
+      maxDpr = 1.0;
+      shadowsOn = false;
+      bokehCount = 0;
+      idleIntervalMs = 1000 / 30;
+      activeIntervalMs = 1000 / 30;
+    }
+
+    this._maxDpr = maxDpr;
+    this.minFrameIntervalMs = idleIntervalMs;
+    this.activeMinFrameIntervalMs = activeIntervalMs;
+    this.bokehMaxCount = bokehCount;
+
+    if (this.renderer) {
+      this.renderer.setPixelRatio(Math.min(dpr, maxDpr));
+      this.renderer.setSize(window.innerWidth, window.innerHeight);
+      this.renderer.shadowMap.enabled = shadowsOn;
+      if (shadowsOn) this.renderer.shadowMap.needsUpdate = true;
+    }
+    if (this.keyLight) {
+      this.keyLight.castShadow = shadowsOn;
+    }
+    if (this.bokehMesh) {
+      this.bokehMesh.visible = bokehCount > 0;
+      this.bokehMesh.count = bokehCount;
+      this.bokehMesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+
   closeBowl(callback, isSqueezeOpaque = false) {
     this.isBowlClosed = true;
+    this.isSqueezeOpaque = Boolean(isSqueezeOpaque);
+    this.setContainerTouchLock(this.isSqueezeOpaque);
     this.bowlOffset = { x: 0, z: 0 };
     if (this.squeezeRimLight) this.squeezeRimLight.intensity = 0;
     if (this.innerRimMat) this.innerRimMat.emissiveIntensity = 0;
@@ -1102,6 +1188,8 @@ class Sicbo3DEngine {
   openBowlQuick(callback) {
     this.isBowlClosed = false;
     this.isDraggingBowl = false;
+    this.isSqueezeOpaque = false;
+    this.setContainerTouchLock(false);
     this.bowlOffset = { x: 0, z: 0 };
 
     this.setBowlOpaqueForSqueeze(false);
@@ -1149,12 +1237,28 @@ class Sicbo3DEngine {
       return { x: e.clientX, y: e.clientY };
     };
 
+    const isBlockedTarget = (target) => {
+      if (typeof document !== 'undefined' && document.body.classList.contains('modal-open')) return true;
+      if (!target || typeof target.closest !== 'function') return false;
+      return Boolean(target.closest(
+        'button, a, input, textarea, select, label, ' +
+        '.bet-spot, .zen-chip, ' +
+        '.matrix-drawer-backdrop, .matrix-drawer-card, ' +
+        '#authModal, #adminModal, #leaderboardModal, #rulesModal, ' +
+        '.modal-backdrop, .modal-card, ' +
+        '.top-pill-nav, .bottom-hud-bar, .hud-center-dock, .hud-left-meta, .hud-right-eq, ' +
+        '.sanctuary-bet-deck, .alabaster-card, .fairness-commit-bar, ' +
+        '.squeeze-glass-toast, .center-live-banner, #toastContainer, #roundResultBanner'
+      ));
+    };
+
     const onPointerDown = (e) => {
       if (!this.isBowlClosed || this.isRolling) return;
-      if (e.target && (e.target.closest('button') || e.target.closest('.bet-spot') || e.target.closest('.zen-chip') || e.target.closest('.matrix-drawer-card') || e.target.closest('.alabaster-card'))) {
-        return;
-      }
+      if (e.touches && e.touches.length > 1) return;
+      if (isBlockedTarget(e.target)) return;
+
       this.isDraggingBowl = true;
+      this.setContainerTouchLock(true);
       const pt = getPt(e);
       this.dragStart.x = pt.x;
       this.dragStart.y = pt.y;
@@ -1164,6 +1268,7 @@ class Sicbo3DEngine {
 
     const onPointerMove = (e) => {
       if (!this.isDraggingBowl || !this.isBowlClosed) return;
+      if (e.cancelable) e.preventDefault();
       const pt = getPt(e);
       const dx = (pt.x - this.dragStart.x) * 0.026;
       const dz = (pt.y - this.dragStart.y) * 0.026;
@@ -1210,6 +1315,8 @@ class Sicbo3DEngine {
       const slideDist = Math.hypot(this.bowlOffset.x, this.bowlOffset.z);
       if (slideDist >= REVEAL_RADIUS * 0.68) {
         this.openBowlQuick(this.callbacks.onBowlOpened);
+      } else {
+        this.setContainerTouchLock(this.isSqueezeOpaque && this.isBowlClosed);
       }
     };
 
@@ -1218,8 +1325,9 @@ class Sicbo3DEngine {
     window.addEventListener('mouseup', onPointerUp);
 
     window.addEventListener('touchstart', onPointerDown, { passive: true });
-    window.addEventListener('touchmove', onPointerMove, { passive: true });
+    window.addEventListener('touchmove', onPointerMove, { passive: false });
     window.addEventListener('touchend', onPointerUp);
+    window.addEventListener('touchcancel', onPointerUp);
   }
 
   onResize() {
@@ -1227,11 +1335,52 @@ class Sicbo3DEngine {
     const height = window.innerHeight;
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(width, height);
+    if (this.renderer) {
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this._maxDpr || 1.5));
+      this.renderer.setSize(width, height);
+    }
   }
 
-  animate() {
-    requestAnimationFrame(this.animate);
+  pause() {
+    this.isPaused = true;
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+  }
+
+  resume() {
+    if (typeof document !== 'undefined' && document.hidden) return;
+    this.isPaused = false;
+    const perfNow = (typeof performance !== 'undefined' ? performance : Date).now();
+    if (this.clock) {
+      this.clock.oldTime = perfNow;
+    }
+    this.lastFpsTime = perfNow;
+    this.frameCount = 0;
+    this.lastRenderTime = 0;
+    if (this.rafId === null) {
+      this.rafId = requestAnimationFrame(this.animate);
+    }
+  }
+
+  animate(rafTime) {
+    if (this.isPaused || (typeof document !== 'undefined' && document.hidden)) {
+      this.rafId = null;
+      return;
+    }
+    this.rafId = requestAnimationFrame(this.animate);
+
+    const frameNow = typeof rafTime === 'number' ? rafTime : performance.now();
+    const minInterval = (this.physicsState || this.isDraggingBowl)
+      ? this.activeMinFrameIntervalMs
+      : this.minFrameIntervalMs;
+
+    if (minInterval > 0 && this.lastRenderTime > 0 && (frameNow - this.lastRenderTime) < minInterval) {
+      return;
+    }
+    this.lastRenderTime = frameNow;
+
     const dt = Math.min(this.clock.getDelta(), 0.05);
     const time = this.clock.elapsedTime;
 

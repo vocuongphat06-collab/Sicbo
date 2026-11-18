@@ -4,22 +4,42 @@ class SoundFX {
     this.ctx = null;
     this.enabled = true;
     this.lastHeartbeatTime = 0;
+    try {
+      const saved = localStorage.getItem('sicbo_sound_enabled');
+      this.enabled = saved === null ? true : (saved !== 'false' && saved !== '0');
+    } catch (_) {
+      this.enabled = true;
+    }
+  }
+
+  setEnabled(flag) {
+    this.enabled = Boolean(flag);
+    try {
+      localStorage.setItem('sicbo_sound_enabled', String(this.enabled));
+    } catch (_) {}
+    return this.enabled;
+  }
+
+  toggle() {
+    return this.setEnabled(!this.enabled);
   }
 
   init() {
+    if (typeof document !== 'undefined' && document.hidden) return false;
     if (!this.ctx) {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      this.ctx = new AudioContext();
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return false;
+      this.ctx = new AudioCtx();
     }
     if (this.ctx.state === 'suspended') {
-      this.ctx.resume();
+      this.ctx.resume().catch(() => {});
     }
+    return Boolean(this.ctx);
   }
 
   // Casino Ceramic Chip Placement Click
   playChip() {
-    if (!this.enabled) return;
-    this.init();
+    if (!this.enabled || !this.init()) return;
     const ctx = this.ctx;
     const now = ctx.currentTime;
 
@@ -42,8 +62,7 @@ class SoundFX {
 
   // Physics-Synced Single Die Bounce / Die-to-Die Ivory Clack
   playDiceBounce(intensity = 0.7) {
-    if (!this.enabled) return;
-    this.init();
+    if (!this.enabled || !this.init()) return;
     const ctx = this.ctx;
     const now = ctx.currentTime;
     const amp = Math.max(0.06, Math.min(1.0, intensity));
@@ -96,8 +115,7 @@ class SoundFX {
 
   // Mechanical Dome Shaker Agitation Rattle
   playDiceShake() {
-    if (!this.enabled) return;
-    this.init();
+    if (!this.enabled || !this.init()) return;
     const ctx = this.ctx;
     const now = ctx.currentTime;
     const duration = 0.92;
@@ -141,8 +159,7 @@ class SoundFX {
 
   // Suspense Heartbeat & Rim Slide Friction during 3D Bowl Squeeze ("Nặn Bát")
   playSqueezeTension(progress = 0.4) {
-    if (!this.enabled) return;
-    this.init();
+    if (!this.enabled || !this.init()) return;
     const nowMs = performance.now();
     // Heartbeat accelerates from 640ms interval down to 290ms as bowl nears reveal!
     const intervalMs = 640 - Math.min(1, Math.max(0, progress)) * 350;
@@ -175,8 +192,7 @@ class SoundFX {
 
   // Bowl Pop / Reveal Shimmer
   playBowlRevealPop() {
-    if (!this.enabled) return;
-    this.init();
+    if (!this.enabled || !this.init()) return;
     const ctx = this.ctx;
     const now = ctx.currentTime;
 
@@ -197,8 +213,7 @@ class SoundFX {
 
   // Watch Escapement Tick for 15s Auto-Live Salon Timer
   playTimerTick(isUrgent = false) {
-    if (!this.enabled) return;
-    this.init();
+    if (!this.enabled || !this.init()) return;
     const ctx = this.ctx;
     const now = ctx.currentTime;
 
@@ -217,8 +232,7 @@ class SoundFX {
 
   // Win Chime Fanfare
   playWin() {
-    if (!this.enabled) return;
-    this.init();
+    if (!this.enabled || !this.init()) return;
     const ctx = this.ctx;
     const now = ctx.currentTime;
     const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
@@ -244,8 +258,7 @@ class SoundFX {
 
   // Big Win Jackpot Fanfare
   playBigWin() {
-    if (!this.enabled) return;
-    this.init();
+    if (!this.enabled || !this.init()) return;
     const ctx = this.ctx;
     const now = ctx.currentTime;
     const chord = [523.25, 659.25, 783.99, 1046.50, 1318.51]; // C Major 9
@@ -270,8 +283,7 @@ class SoundFX {
 
   // Short click / UI tap
   playTick() {
-    if (!this.enabled) return;
-    this.init();
+    if (!this.enabled || !this.init()) return;
     const ctx = this.ctx;
     const now = ctx.currentTime;
 
@@ -288,6 +300,102 @@ class SoundFX {
 
     osc.start(now);
     osc.stop(now + 0.035);
+  }
+
+  // Chip Remove / Undo
+  playChipRemove() {
+    if (!this.enabled || !this.init()) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(1320 + Math.random() * 180, now);
+    osc.frequency.exponentialRampToValueAtTime(460, now + 0.048);
+    gain.gain.setValueAtTime(0.18, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.052);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.056);
+  }
+
+  // Breakeven Push Chime ("HÒA VỐN • ±0 ₫")
+  playBreakeven() {
+    if (!this.enabled || !this.init()) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    [392.0, 587.33].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + i * 0.08);
+      gain.gain.setValueAtTime(0.001, now + i * 0.08);
+      gain.gain.linearRampToValueAtTime(0.11, now + i * 0.08 + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0008, now + i * 0.08 + 0.34);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + i * 0.08);
+      osc.stop(now + i * 0.08 + 0.36);
+    });
+  }
+
+  // Subtle Felt Thud on Loss
+  playLoss() {
+    if (!this.enabled || !this.init()) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(220, now);
+    osc.frequency.exponentialRampToValueAtTime(125, now + 0.13);
+    gain.gain.setValueAtTime(0.085, now);
+    gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.14);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.15);
+  }
+
+  // Daily Bonus / Bankruptcy Aid / Account Upgrade Shimmer
+  playBonus() {
+    if (!this.enabled || !this.init()) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    [659.25, 830.61, 987.77, 1318.51].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + i * 0.06);
+      gain.gain.setValueAtTime(0.001, now + i * 0.06);
+      gain.gain.linearRampToValueAtTime(0.13, now + i * 0.06 + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0008, now + i * 0.06 + 0.42);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + i * 0.06);
+      osc.stop(now + i * 0.06 + 0.45);
+    });
+  }
+
+  // Toast Notification Cue
+  playToast(type = 'info') {
+    if (!this.enabled || !this.init()) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type === 'error' ? 'triangle' : 'sine';
+    const f0 = type === 'error' ? 310 : (type === 'success' ? 660 : 540);
+    const f1 = type === 'error' ? 220 : (type === 'success' ? 880 : 620);
+    osc.frequency.setValueAtTime(f0, now);
+    osc.frequency.exponentialRampToValueAtTime(f1, now + 0.09);
+    gain.gain.setValueAtTime(0.08, now);
+    gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.11);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.12);
   }
 }
 

@@ -8,6 +8,27 @@
 
   const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+  let graphicsQuality = 'high';
+  try {
+    const q = localStorage.getItem('sicbo_graphics_quality');
+    if (q === 'high' || q === 'balanced' || q === 'eco') graphicsQuality = q;
+  } catch (_) {}
+
+  const liquidControllers = [];
+  let motionController = null;
+
+  window.ThreeUIFX = {
+    getGraphicsQuality() {
+      return graphicsQuality;
+    },
+    setGraphicsQuality(mode) {
+      const valid = (mode === 'high' || mode === 'balanced' || mode === 'eco') ? mode : 'high';
+      graphicsQuality = valid;
+      liquidControllers.forEach(ctrl => ctrl.applyQuality(valid));
+      if (motionController) motionController.applyQuality(valid);
+    }
+  };
+
   /* =====================================================================
      1. LIQUID-METAL DISPERSION SHADER CTA
      ===================================================================== */
@@ -386,12 +407,18 @@ void main(){
     let DOWN = 4;
     const GLOW_TEX = 129;
     let needResize = true;
+    let rafId = null;
+    let quality = graphicsQuality;
+    let maxDpr = 1.25;
+    let idleHz = 14;
+    let activeMinMs = 0;
+    let blurIters = 2;
 
     function resize() {
       const r = host.getBoundingClientRect();
       const br = btn.getBoundingClientRect();
       if (!r.width || !r.height || !br.width || !br.height) return;
-      DPR = Math.min(window.devicePixelRatio || 1, 1.25);
+      DPR = Math.min(window.devicePixelRatio || 1, maxDpr);
       const w = Math.max(2, Math.round(r.width * DPR));
       const h = Math.max(2, Math.round(r.height * DPR));
       if (w !== W || h !== H) {
@@ -500,16 +527,40 @@ void main(){
     window.addEventListener('pointerup', () => { on.press = false; sync(); });
     window.addEventListener('pointercancel', () => { on.press = false; sync(); });
 
-    // Expose programmatic pulse for Spacebar / Auto-Live 15s Roll
+    // Expose programmatic pulse for Spacebar / Auto-Live Roll
     window.triggerLiquidRollPulse = function () {
+      if (quality === 'eco') {
+        host.classList.remove('eco-pulse');
+        void host.offsetWidth;
+        host.classList.add('eco-pulse');
+        setTimeout(() => host.classList.remove('eco-pulse'), 420);
+        return;
+      }
       addRipple(0, 0);
       hover = Math.max(hover, 0.85);
+      scheduleFrame();
     };
 
+    function scheduleFrame() {
+      if (rafId === null && !document.hidden && quality !== 'eco') {
+        rafId = requestAnimationFrame(frame);
+      }
+    }
+
+    function stopFrame() {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    }
+
     function frame(now) {
+      rafId = null;
+      if (document.hidden || quality === 'eco') return;
+
       const dtRaw = (now - last) / 1000;
       last = now;
-      const dt = Math.min(dtRaw, 1 / 20);
+      const dt = Math.min(Math.max(dtRaw, 0), 1 / 20);
       if (!REDUCED) clock += dt;
 
       const k = hoverTarget > hover ? 1 - Math.pow(0.0012, dt) : 1 - Math.pow(0.00012, dt);
@@ -543,14 +594,15 @@ void main(){
 
       if (needResize) resize();
       if (!W || !H) {
-        requestAnimationFrame(frame);
+        scheduleFrame();
         return;
       }
 
       const idle = !on.over && !on.press && !on.focus && !ripLive
                 && hover < 0.002 && press < 0.002 && ptrAmt < 0.002;
-      if (idle && now - lastDraw < 1000 / IDLE_HZ) {
-        requestAnimationFrame(frame);
+      const minStepMs = idle ? (1000 / idleHz) : activeMinMs;
+      if (minStepMs > 0 && (now - lastDraw) < minStepMs) {
+        scheduleFrame();
         return;
       }
       lastDraw = now;
@@ -604,7 +656,7 @@ void main(){
       gl.uniform2f(pBlur.u.uTexel, 1 / T_s1.w, 1 / T_s1.h);
       const sigTex = C.soften * (BH * 0.5) * 0.95;
       if (sigTex > 0.1 && (hover > 0.01 || ripLive)) {
-        const iters = 2;
+        const iters = blurIters;
         gl.uniform1f(pBlur.u.uR, sigTex / Math.sqrt(iters) / 1.95);
         for (let i = 0; i < iters; i++) {
           gl.bindTexture(gl.TEXTURE_2D, T_s1.tex);
@@ -669,11 +721,49 @@ void main(){
       gl.uniform1f(pComp.u.uPunch, C.punch);
       drawTo(null);
 
-      requestAnimationFrame(frame);
+      scheduleFrame();
     }
 
+    function applyQuality(mode) {
+      quality = mode;
+      if (mode === 'eco') {
+        stopFrame();
+        host.classList.add('liquid-fallback');
+        cv.style.display = 'none';
+        return;
+      }
+      host.classList.remove('liquid-fallback');
+      cv.style.display = '';
+      if (mode === 'balanced') {
+        maxDpr = 1.0;
+        idleHz = 8;
+        activeMinMs = 1000 / 36;
+        blurIters = 1;
+      } else {
+        maxDpr = 1.25;
+        idleHz = 14;
+        activeMinMs = 0;
+        blurIters = 2;
+      }
+      needResize = true;
+      last = performance.now();
+      lastDraw = 0;
+      scheduleFrame();
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        stopFrame();
+      } else if (quality !== 'eco') {
+        last = performance.now();
+        lastDraw = 0;
+        scheduleFrame();
+      }
+    });
+
+    liquidControllers.push({ applyQuality });
     resize();
-    requestAnimationFrame(frame);
+    applyQuality(graphicsQuality);
   }
 
   /* =====================================================================
@@ -744,10 +834,32 @@ void main(){
     });
 
     let lastTick = performance.now();
+    let motionRafId = null;
+    let motionQuality = graphicsQuality;
+    let lastMotionDraw = 0;
+
+    function scheduleMotion() {
+      if (motionRafId === null && !document.hidden && motionQuality !== 'eco') {
+        motionRafId = requestAnimationFrame(stepMotion);
+      }
+    }
+
+    function stopMotion() {
+      if (motionRafId !== null) {
+        cancelAnimationFrame(motionRafId);
+        motionRafId = null;
+      }
+    }
 
     function stepMotion(now) {
-      requestAnimationFrame(stepMotion);
-      const dt = Math.min((now - lastTick) / 1000, 0.05);
+      motionRafId = null;
+      if (document.hidden || motionQuality === 'eco') return;
+      if (motionQuality === 'balanced' && (now - lastMotionDraw) < (1000 / 40)) {
+        scheduleMotion();
+        return;
+      }
+      lastMotionDraw = now;
+      const dt = Math.min(Math.max((now - lastTick) / 1000, 0), 0.05);
       lastTick = now;
 
       // 1. Eased --px, --py 3D Counter-Parallax for Alabaster Card Windows
@@ -852,9 +964,51 @@ void main(){
       }
 
       aimMoved = false;
+      scheduleMotion();
     }
 
-    requestAnimationFrame(stepMotion);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        stopMotion();
+      } else if (motionQuality !== 'eco') {
+        lastTick = performance.now();
+        scheduleMotion();
+      }
+    });
+
+    motionController = {
+      applyQuality(mode) {
+        motionQuality = mode;
+        if (mode === 'eco') {
+          stopMotion();
+          document.documentElement.style.setProperty('--px', 0);
+          document.documentElement.style.setProperty('--py', 0);
+          lastPX = 0;
+          lastPY = 0;
+          dockItems.forEach(st => {
+            st.v = 0;
+            st.vel = 0;
+            st.target = 0;
+            st.el.style.transform = '';
+            st.el.style.marginLeft = '';
+            st.el.style.marginRight = '';
+          });
+          specItems.forEach(st => {
+            st.el.style.setProperty('--spec-bright', '0.32');
+          });
+        } else {
+          lastTick = performance.now();
+          lastMotionDraw = 0;
+          scheduleMotion();
+        }
+      }
+    };
+
+    if (!document.hidden && motionQuality !== 'eco') {
+      scheduleMotion();
+    } else if (motionQuality === 'eco') {
+      motionController.applyQuality('eco');
+    }
   }
 
   document.addEventListener('DOMContentLoaded', () => {

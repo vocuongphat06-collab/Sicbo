@@ -1,18 +1,18 @@
 {
   "name": "sicbo-vip-3d",
   "version": "1.0.0",
-  "description": "",
+  "description": "SOVEREIGN Private 3D Sicbo Salon — Express 5 + Serverless + Provably Fair",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test tests/unit/*.test.js",
+    "test:e2e": "node --test tests/e2e/*.test.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "cors": "^2.8.6",
     "express": "^5.3.0"
   }
 }
