@@ -22,7 +22,7 @@ const {
 } = require('./helpers');
 
 describe('Tier 4 — Real-World End-to-End Workloads & VERCEL=1 Serverless', () => {
-  it('T4.1: Complete VIP Player Session (register -> daily-bonus -> Macau rolls -> rotate/WebCrypto -> drain/aid -> change-pw/recover -> ledger reconcile)', async () => {
+  it('T4.1: Complete VIP Player Session (register 0 -> welcome-bonus +2M -> Macau rolls -> rotate/WebCrypto -> change-pw/recover -> ledger reconcile)', async () => {
     const server = await startTestServer({ stripSecrets: true });
     try {
       const vip = createClient(server.baseUrl);
@@ -33,12 +33,14 @@ describe('Tier 4 — Real-World End-to-End Workloads & VERCEL=1 Serverless', () 
       });
       assert.equal(reg.status, 201);
       const recoveryCode = reg.json.recoveryCode;
-      assert.equal(reg.json.user.balance, 10_000_000);
+      assert.equal(reg.json.user.balance, 0);
+      assert.equal(reg.json.user.welcomeBonusClaimed, false);
 
-      // 1. Claim 24h daily bonus (+2M -> 12M)
-      const bonus = await vip.post('/api/wallet/daily-bonus', {});
+      // 1. Claim 1-time welcome bonus (+2M -> 2M) and confirm second claim is rejected 409
+      const bonus = await vip.post('/api/wallet/welcome-bonus', {});
       assert.equal(bonus.status, 200);
-      assert.equal(bonus.json.balance, 12_000_000);
+      assert.equal(bonus.json.balance, 2_000_000);
+      assert.equal((await vip.post('/api/wallet/welcome-bonus', {})).status, 409);
 
       // 2. Play diverse Macau bets and record fairness nonces
       const initialHash = (await vip.get('/api/auth/me')).json.fairness.serverSeedHash;
@@ -67,21 +69,9 @@ describe('Tier 4 — Real-World End-to-End Workloads & VERCEL=1 Serverless', () 
         assert.deepEqual(wcDice, r.dice);
       }
 
-      // 4. Drain below 10,000 naturally (stake balance - 5,000 on triple_6) and claim bankruptcy aid
-      let curBal = rolls[rolls.length - 1].newBalance;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        if (curBal < 10_000) break;
-        const drainStake = curBal - 5_000;
-        const drainRoll = await vip.post('/api/roll', { bets: { triple_6: drainStake } });
-        assert.equal(drainRoll.status, 200);
-        curBal = drainRoll.json.newBalance;
-      }
-      const preAidBal = curBal;
-      assert.ok(preAidBal < 10_000, 'Player balance should be drained below 10,000');
-
-      const aid = await vip.post('/api/wallet/bankruptcy-aid', {});
-      assert.equal(aid.status, 200);
-      assert.equal(aid.json.balance, preAidBal + 500_000);
+      // 4. Verify retired recurring endpoints remain disabled (410)
+      assert.equal((await vip.post('/api/wallet/daily-bonus', {})).status, 410);
+      assert.equal((await vip.post('/api/wallet/bankruptcy-aid', {})).status, 410);
 
       // 5. Change password -> old token returns 401 -> recover using Recovery Code -> login
       const oldCookie = vip.snapshotCookie();
@@ -109,9 +99,9 @@ describe('Tier 4 — Real-World End-to-End Workloads & VERCEL=1 Serverless', () 
       });
       assert.equal(loginRes.status, 200);
 
-      // 6. Full wallet_ledger reconciliation
+      // 6. Full wallet_ledger reconciliation from initial 0 balance
       const finalMe = await relogin.get('/api/auth/me');
-      let reconciled = 10_000_000;
+      let reconciled = 0;
       for (const entry of finalMe.json.ledger) {
         reconciled += entry.balanceAfter - entry.balanceBefore;
       }
@@ -140,6 +130,8 @@ describe('Tier 4 — Real-World End-to-End Workloads & VERCEL=1 Serverless', () 
       assert.equal(aReg.json.user.role, 'admin');
       const p1Id = r1.json.user.id;
       const p2Id = r2.json.user.id;
+      await p1.post('/api/wallet/welcome-bonus', {});
+      await p2.post('/api/wallet/welcome-bonus', {});
 
       await p1.post('/api/roll', { bets: { tai: 50_000 } });
       await p2.post('/api/roll', { bets: { xiu: 50_000 } });
@@ -218,6 +210,7 @@ describe('Tier 4 — Real-World End-to-End Workloads & VERCEL=1 Serverless', () 
 
       // Verify CookieJar sends Secure cookie over local loopback HTTP
       assert.equal((await client.get('/api/auth/me')).status, 200);
+      await client.post('/api/wallet/welcome-bonus', {});
 
       const roll = await client.post('/api/roll', { bets: { tai: 25_000, double_4: 5_000 } });
       assert.equal(roll.status, 200);
@@ -260,6 +253,7 @@ describe('Tier 4 — Real-World End-to-End Workloads & VERCEL=1 Serverless', () 
         )
       );
       for (const r of regs) assert.equal(r.status, 201);
+      await Promise.all(players.map((c) => c.post('/api/wallet/welcome-bonus', {})));
 
       // Each player fires 5 concurrent manual rolls (15 total)
       const manualResults = await Promise.all(
@@ -295,7 +289,7 @@ describe('Tier 4 — Real-World End-to-End Workloads & VERCEL=1 Serverless', () 
       for (const c of players) {
         const me = await c.get('/api/auth/me');
         assert.ok(me.json.user.balance >= 0);
-        let sum = 10_000_000;
+        let sum = 0;
         for (const e of me.json.ledger) sum += e.balanceAfter - e.balanceBefore;
         assert.equal(sum, me.json.user.balance);
       }
@@ -333,6 +327,7 @@ describe('Tier 4 — Real-World End-to-End Workloads & VERCEL=1 Serverless', () 
       // Real roll + rotate + WebCrypto verification against HTTP-served app
       const reg = await client.post('/api/auth/register', { username: 't4_parity_u', password: 'Password!123' });
       assert.equal(reg.status, 201);
+      await client.post('/api/wallet/welcome-bonus', {});
       const roll = await client.post('/api/roll', { bets: { double_2: 5_000, pair_1_3: 5_000 } });
       assert.equal(roll.status, 200);
 

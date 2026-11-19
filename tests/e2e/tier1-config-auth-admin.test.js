@@ -187,7 +187,8 @@ describe('Tier 1 — F5a: Auth Register, Login & Logout Lifecycle', () => {
     assert.equal(res.status, 201);
     assert.ok(res.json.user, 'Response must include user');
     assert.equal(res.json.user.username, 'vip_alpha');
-    assert.equal(res.json.user.balance, 10_000_000);
+    assert.equal(res.json.user.balance, 0);
+    assert.equal(res.json.user.welcomeBonusClaimed, false);
     assert.equal(typeof res.json.recoveryCode, 'string');
     assert.ok(res.json.recoveryCode.length >= 6);
     assert.equal(res.json.user.passwordHash, undefined);
@@ -331,42 +332,15 @@ describe('Tier 1 — F5c: Guest Upgrade & Auth Guard Rejections', () => {
     if (server) await server.close();
   });
 
-  it('F5.5: guest play and upgrade to real account preserves exact balance, history, and ledger', async () => {
+  it('F5.5: POST /api/auth/guest is disabled (403) and anonymous /api/state reports zeroed user/session', async () => {
     const client = createClient(server.baseUrl);
     const guestRes = await client.post('/api/auth/guest', {});
-    assert.equal(guestRes.status, 201);
-    assert.equal(guestRes.json.user.isGuest, true);
-    assert.equal(guestRes.json.user.balance, 2_000_000);
+    assert.equal(guestRes.status, 403);
+    assert.equal(guestRes.json.code, 'GUEST_DISABLED');
 
-    const rollRes = await client.post('/api/roll', {
-      bets: { tai: 25_000, single_1: 10_000 },
-    }, { headers: { 'Idempotency-Key': 'f5-guest-roll-1' } });
-    assert.equal(rollRes.status, 200);
-    const balanceAfterRoll = rollRes.json.newBalance;
-
-    const meBeforeUpgrade = await client.get('/api/auth/me');
-    assert.equal(meBeforeUpgrade.status, 200);
-    const ledgerCountBefore = meBeforeUpgrade.json.ledger.length;
-    const historyCountBefore = meBeforeUpgrade.json.personalHistory.length;
-    assert.ok(ledgerCountBefore >= 1);
-    assert.equal(historyCountBefore, 1);
-
-    const upRes = await client.post('/api/auth/upgrade', {
-      username: 'upgraded_vip',
-      password: 'UpgradedPass!123',
-      displayName: 'Upgraded VIP',
-    });
-    assert.equal(upRes.status, 200);
-    assert.equal(upRes.json.user.isGuest, false);
-    assert.equal(upRes.json.user.username, 'upgraded_vip');
-    assert.equal(upRes.json.user.balance, balanceAfterRoll);
-    assert.equal(typeof upRes.json.recoveryCode, 'string');
-
-    const meAfterUpgrade = await client.get('/api/auth/me');
-    assert.equal(meAfterUpgrade.status, 200);
-    assert.equal(meAfterUpgrade.json.user.balance, balanceAfterRoll);
-    assert.equal(meAfterUpgrade.json.ledger.length, ledgerCountBefore);
-    assert.equal(meAfterUpgrade.json.personalHistory.length, historyCountBefore);
+    const anonState = await client.get('/api/state');
+    assert.equal(anonState.status, 200);
+    assert.equal(anonState.json.user, null);
   });
 
   it('F5.6: duplicate username, unauthenticated protected routes, and wrong password fail cleanly', async () => {
@@ -417,6 +391,7 @@ describe('Tier 1 — F4: Atomic DB Adapter, Financial Ledger & Idempotency', () 
       password: 'Password!123',
     });
     assert.equal(reg.status, 201);
+    await client.post('/api/wallet/welcome-bonus', {});
 
     const rollRes = await client.post('/api/roll', {
       bets: { triple_6: 10_000 },
@@ -428,9 +403,9 @@ describe('Tier 1 — F4: Atomic DB Adapter, Financial Ledger & Idempotency', () 
     const betEntry = me.json.ledger.find((e) => e.type === 'bet');
     assert.ok(betEntry, 'wallet_ledger must contain a bet entry');
     assert.equal(typeof betEntry.id, 'string');
-    assert.equal(betEntry.balanceBefore, 10_000_000);
+    assert.equal(betEntry.balanceBefore, 2_000_000);
     assert.equal(Math.abs(betEntry.amount), 10_000);
-    assert.equal(betEntry.balanceAfter, 9_990_000);
+    assert.equal(betEntry.balanceAfter, 1_990_000);
     assert.ok(betEntry.timestamp, 'Ledger entry must include timestamp');
   });
 
@@ -441,6 +416,7 @@ describe('Tier 1 — F4: Atomic DB Adapter, Financial Ledger & Idempotency', () 
       password: 'Password!123',
     });
     assert.equal(reg.status, 201);
+    await client.post('/api/wallet/welcome-bonus', {});
 
     // tai + xiu + triple_any covers 100% of 216 dice outcomes
     const rollRes = await client.post('/api/roll', {
@@ -467,6 +443,7 @@ describe('Tier 1 — F4: Atomic DB Adapter, Financial Ledger & Idempotency', () 
       password: 'Password!123',
     });
     assert.equal(reg.status, 201);
+    await client.post('/api/wallet/welcome-bonus', {});
 
     const first = await client.post(
       '/api/roll',
@@ -497,6 +474,7 @@ describe('Tier 1 — F4: Atomic DB Adapter, Financial Ledger & Idempotency', () 
       password: 'Password!123',
     });
     assert.equal(reg.status, 201);
+    await client.post('/api/wallet/welcome-bonus', {});
 
     const liveState = await waitForLivePhase(client, 'BETTING', 3500);
     const r1 = await client.post(
@@ -511,7 +489,7 @@ describe('Tier 1 — F4: Atomic DB Adapter, Financial Ledger & Idempotency', () 
     );
     assert.equal(r1.status, 200);
     assert.equal(r2.status, 200);
-    assert.equal(r1.json.newBalance, 10_000_000 - 40_000);
+    assert.equal(r1.json.newBalance, 2_000_000 - 40_000);
     assert.equal(r2.json.newBalance, r1.json.newBalance);
   });
 
@@ -529,6 +507,7 @@ describe('Tier 1 — F4: Atomic DB Adapter, Financial Ledger & Idempotency', () 
         password: 'Password!123',
       });
       assert.equal(reg.status, 201);
+      await client.post('/api/wallet/welcome-bonus', {});
 
       const roll = await client.post('/api/roll', { bets: { tai: 10_000 } });
       assert.equal(roll.status, 200);
@@ -622,24 +601,24 @@ describe('Tier 1 — F6 & F4.3: Admin Ops RBAC, Wallet Ops, Leaderboard & Ledger
   it('F6.3: POST /api/admin/users/:id/adjust-balance credits and debits with reason and admin_adjust ledger', async () => {
     const addRes = await adminClient.post(`/api/admin/users/${player1Id}/adjust-balance`, {
       amount: 500_000,
-      reason: 'VIP Welcome Bonus',
+      reason: 'VIP Admin Top-up',
     });
     assert.equal(addRes.status, 200);
-    assert.equal(addRes.json.user.balance, 10_500_000);
+    assert.equal(addRes.json.user.balance, 500_000);
     assert.equal(addRes.json.ledgerEntry.type, 'admin_adjust');
-    assert.equal(addRes.json.ledgerEntry.balanceBefore, 10_000_000);
+    assert.equal(addRes.json.ledgerEntry.balanceBefore, 0);
     assert.equal(addRes.json.ledgerEntry.amount, 500_000);
-    assert.equal(addRes.json.ledgerEntry.balanceAfter, 10_500_000);
+    assert.equal(addRes.json.ledgerEntry.balanceAfter, 500_000);
 
     const subRes = await adminClient.post(`/api/admin/users/${player1Id}/adjust-balance`, {
       amount: -200_000,
       reason: 'Audit correction',
     });
     assert.equal(subRes.status, 200);
-    assert.equal(subRes.json.user.balance, 10_300_000);
+    assert.equal(subRes.json.user.balance, 300_000);
     assert.equal(subRes.json.ledgerEntry.type, 'admin_adjust');
-    assert.equal(subRes.json.ledgerEntry.balanceBefore, 10_500_000);
-    assert.equal(subRes.json.ledgerEntry.balanceAfter, 10_300_000);
+    assert.equal(subRes.json.ledgerEntry.balanceBefore, 500_000);
+    assert.equal(subRes.json.ledgerEntry.balanceAfter, 300_000);
   });
 
   it('F6.4: toggle-lock blocks/unblocks login and reset-password issues working tempPassword', async () => {
@@ -669,36 +648,31 @@ describe('Tier 1 — F6 & F4.3: Admin Ops RBAC, Wallet Ops, Leaderboard & Ledger
     assert.equal(tempLogin.status, 200);
   });
 
-  it('F6.5: POST /api/wallet/daily-bonus awards +2,000,000 once per 24h cooldown', async () => {
+  it('F6.5: POST /api/wallet/welcome-bonus awards +2,000,000 once per account and rejects repeat with 409', async () => {
     const beforeMe = await player2Client.get('/api/auth/me');
     const beforeBal = beforeMe.json.user.balance;
+    assert.equal(beforeBal, 0);
 
-    const bonusRes = await player2Client.post('/api/wallet/daily-bonus', {});
+    const bonusRes = await player2Client.post('/api/wallet/welcome-bonus', {});
     assert.equal(bonusRes.status, 200);
     assert.equal(bonusRes.json.bonusAmount, 2_000_000);
-    assert.equal(bonusRes.json.balance, beforeBal + 2_000_000);
-    assert.ok(bonusRes.json.nextEligibleAt);
-    assert.equal(bonusRes.json.ledgerEntry.type, 'daily_bonus');
+    assert.equal(bonusRes.json.balance, 2_000_000);
+    assert.equal(bonusRes.json.welcomeBonusClaimed, true);
+    assert.equal(bonusRes.json.ledgerEntry.type, 'welcome_bonus');
 
-    const repeatRes = await player2Client.post('/api/wallet/daily-bonus', {});
-    assert.ok([400, 429].includes(repeatRes.status), `Repeat daily bonus must fail with 400/429, got ${repeatRes.status}`);
+    const repeatRes = await player2Client.post('/api/wallet/welcome-bonus', {});
+    assert.equal(repeatRes.status, 409);
+    assert.equal(repeatRes.json.code, 'WELCOME_BONUS_ALREADY_CLAIMED');
   });
 
-  it('F6.6: POST /api/wallet/bankruptcy-aid (+500k when <10k) and GET /api/leaderboard ranking', async () => {
-    const meP1 = await player1Client.get('/api/auth/me');
-    const drainDelta = -(meP1.json.user.balance - 5_000);
-    const drainRes = await adminClient.post(`/api/admin/users/${player1Id}/adjust-balance`, {
-      amount: drainDelta,
-      reason: 'Drain to < 10k for bankruptcy test',
-    });
-    assert.equal(drainRes.status, 200);
-    assert.equal(drainRes.json.user.balance, 5_000);
+  it('F6.6: retired daily-bonus & bankruptcy-aid return 410 and GET /api/leaderboard ranks by balance', async () => {
+    const dailyDisabled = await player1Client.post('/api/wallet/daily-bonus', {});
+    assert.equal(dailyDisabled.status, 410);
+    assert.equal(dailyDisabled.json.code, 'FEATURE_DISABLED');
 
-    const aidRes = await player1Client.post('/api/wallet/bankruptcy-aid', {});
-    assert.equal(aidRes.status, 200);
-    assert.equal(aidRes.json.aidAmount, 500_000);
-    assert.equal(aidRes.json.balance, 505_000);
-    assert.equal(aidRes.json.ledgerEntry.type, 'bankruptcy_aid');
+    const aidDisabled = await player1Client.post('/api/wallet/bankruptcy-aid', {});
+    assert.equal(aidDisabled.status, 410);
+    assert.equal(aidDisabled.json.code, 'FEATURE_DISABLED');
 
     const lbRes = await createClient(server.baseUrl).get('/api/leaderboard');
     assert.equal(lbRes.status, 200);
@@ -715,23 +689,27 @@ describe('Tier 1 — F6 & F4.3: Admin Ops RBAC, Wallet Ops, Leaderboard & Ledger
     }
   });
 
-  it('F4.3: wallet_ledger records daily_bonus, bankruptcy_aid, and admin_adjust with valid schema', async () => {
-    const allowedTypes = new Set(['bet', 'win', 'refund', 'daily_bonus', 'bankruptcy_aid', 'admin_adjust']);
+  it('F4.3: wallet_ledger records welcome_bonus and admin_adjust with valid schema and 0 + sum(ledger) === balance', async () => {
+    const allowedTypes = new Set(['bet', 'win', 'refund', 'welcome_bonus', 'daily_bonus', 'bankruptcy_aid', 'admin_adjust']);
     const p1Me = await player1Client.get('/api/auth/me');
     const p2Me = await player2Client.get('/api/auth/me');
 
     const p1Types = new Set(p1Me.json.ledger.map((e) => e.type));
     const p2Types = new Set(p2Me.json.ledger.map((e) => e.type));
     assert.ok(p1Types.has('admin_adjust'), 'p1 ledger must contain admin_adjust');
-    assert.ok(p1Types.has('bankruptcy_aid'), 'p1 ledger must contain bankruptcy_aid');
-    assert.ok(p2Types.has('daily_bonus'), 'p2 ledger must contain daily_bonus');
+    assert.ok(p2Types.has('welcome_bonus'), 'p2 ledger must contain welcome_bonus');
 
-    for (const entry of [...p1Me.json.ledger, ...p2Me.json.ledger]) {
-      assert.ok(allowedTypes.has(entry.type), `Invalid ledger type: ${entry.type}`);
-      assert.equal(typeof entry.balanceBefore, 'number');
-      assert.equal(typeof entry.amount, 'number');
-      assert.equal(typeof entry.balanceAfter, 'number');
-      assert.ok(entry.timestamp !== undefined);
+    for (const uMe of [p1Me.json, p2Me.json]) {
+      let sum = 0;
+      for (const entry of uMe.ledger) {
+        assert.ok(allowedTypes.has(entry.type), `Invalid ledger type: ${entry.type}`);
+        assert.equal(typeof entry.balanceBefore, 'number');
+        assert.equal(typeof entry.amount, 'number');
+        assert.equal(typeof entry.balanceAfter, 'number');
+        assert.ok(entry.timestamp !== undefined);
+        sum += entry.amount;
+      }
+      assert.equal(sum, uMe.user.balance);
     }
   });
 });

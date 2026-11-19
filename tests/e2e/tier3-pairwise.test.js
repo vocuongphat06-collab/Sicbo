@@ -63,43 +63,38 @@ describe('Tier 3A — Cross-Feature Pairwise: Guest Upgrade, Admin Leaderboard &
     if (server) await server.close();
   });
 
-  it('T3.1: Guest -> 2 Manual Rolls -> Upgrade preserves balance, history & ledger, and allows re-login', async () => {
-    const guest = createClient(server.baseUrl);
-    const gReg = await guest.post('/api/auth/guest', {});
-    assert.equal(gReg.status, 201);
-    assert.equal(gReg.json.user.balance, 2_000_000);
+  it('T3.1: POST /api/auth/guest returns 403; Register -> Welcome Bonus -> Manual Rolls -> Logout -> Re-Login preserves state', async () => {
+    const anon = createClient(server.baseUrl);
+    const gReg = await anon.post('/api/auth/guest', {});
+    assert.equal(gReg.status, 403);
+    assert.equal(gReg.json.code, 'GUEST_DISABLED');
 
-    const r1 = await guest.post('/api/roll', { bets: { tai: 20_000 } });
-    const r2 = await guest.post('/api/roll', { bets: { xiu: 15_000 } });
+    const reg = await anon.post('/api/auth/register', { username: 't3_member_vip', password: 'UpgradedPass!123', displayName: 'T3 VIP' });
+    assert.equal(reg.status, 201);
+    assert.equal(reg.json.user.balance, 0);
+    await anon.post('/api/wallet/welcome-bonus', {});
+
+    const r1 = await anon.post('/api/roll', { bets: { tai: 20_000 } });
+    const r2 = await anon.post('/api/roll', { bets: { xiu: 15_000 } });
     assert.equal(r1.status, 200);
     assert.equal(r2.status, 200);
 
-    const meBefore = await guest.get('/api/auth/me');
+    const meBefore = await anon.get('/api/auth/me');
     assert.equal(meBefore.status, 200);
     const balBefore = meBefore.json.user.balance;
     const ledgerLenBefore = meBefore.json.ledger.length;
     const histRoundIds = meBefore.json.personalHistory.map((h) => h.roundId);
     assert.equal(histRoundIds.length, 2);
 
-    const up = await guest.post('/api/auth/upgrade', {
-      username: 't3_upgraded_vip',
-      password: 'UpgradedPass!123',
-      displayName: 'T3 Upgraded',
-    });
-    assert.equal(up.status, 200);
-    assert.equal(up.json.user.isGuest, false);
-    assert.equal(up.json.user.balance, balBefore);
-    assert.equal(typeof up.json.recoveryCode, 'string');
-
-    const logoutRes = await guest.post('/api/auth/logout', {});
+    const logoutRes = await anon.post('/api/auth/logout', {});
     assert.equal(logoutRes.status, 200);
-    const reLogin = await guest.post('/api/auth/login', {
-      username: 't3_upgraded_vip',
+    const reLogin = await anon.post('/api/auth/login', {
+      username: 't3_member_vip',
       password: 'UpgradedPass!123',
     });
     assert.equal(reLogin.status, 200);
 
-    const meAfter = await guest.get('/api/auth/me');
+    const meAfter = await anon.get('/api/auth/me');
     assert.equal(meAfter.status, 200);
     assert.equal(meAfter.json.user.balance, balBefore);
     assert.equal(meAfter.json.ledger.length, ledgerLenBefore);
@@ -121,13 +116,13 @@ describe('Tier 3A — Cross-Feature Pairwise: Guest Upgrade, Admin Leaderboard &
     });
     assert.equal(adj.status, 200);
     assert.equal(adj.json.ledgerEntry.type, 'admin_adjust');
-    assert.equal(adj.json.ledgerEntry.balanceBefore, 10_000_000);
-    assert.equal(adj.json.ledgerEntry.balanceAfter, 35_000_000);
+    assert.equal(adj.json.ledgerEntry.balanceBefore, 0);
+    assert.equal(adj.json.ledgerEntry.balanceAfter, 25_000_000);
 
     const lb = await createClient(server.baseUrl).get('/api/leaderboard');
     assert.equal(lb.status, 200);
     assert.equal(lb.json.byBalance[0].username, 't3_lb_u2');
-    assert.equal(lb.json.byBalance[0].balance, 35_000_000);
+    assert.equal(lb.json.byBalance[0].balance, 25_000_000);
 
     const u2ProfitRow = lb.json.byNetProfit.find((r) => r.username === 't3_lb_u2');
     assert.ok(u2ProfitRow);
@@ -151,7 +146,7 @@ describe('Tier 3A — Cross-Feature Pairwise: Guest Upgrade, Admin Leaderboard &
 
       // Set exact balance = 100,000
       const adj = await rAdmin.post(`/api/admin/users/${racerId}/adjust-balance`, {
-        amount: -(10_000_000 - 100_000),
+        amount: 100_000,
         reason: 'Set exact 100k race bankroll',
       });
       assert.equal(adj.status, 200);
@@ -198,7 +193,7 @@ describe('Tier 3A — Cross-Feature Pairwise: Guest Upgrade, Admin Leaderboard &
       assert.equal(finalBalance, 100_000 - sumAcceptedBet + sumAcceptedWin);
 
       // Reconcile entire wallet_ledger (including initial admin_adjust)
-      let ledgerSum = 10_000_000;
+      let ledgerSum = 0;
       for (const entry of meAfter.json.ledger) {
         ledgerSum += entry.balanceAfter - entry.balanceBefore;
       }
@@ -234,6 +229,7 @@ describe('Tier 3B — Cross-Feature Pairwise: Fairness, Live Clock & Lock/Aid Li
     const client = createClient(server.baseUrl);
     const reg = await client.post('/api/auth/register', { username: 't3_fair_player', password: 'Password!123' });
     assert.equal(reg.status, 201);
+    await client.post('/api/wallet/welcome-bonus', {});
 
     const meInit = await client.get('/api/auth/me');
     assert.equal(meInit.status, 200);
@@ -274,11 +270,12 @@ describe('Tier 3B — Cross-Feature Pairwise: Fairness, Live Clock & Lock/Aid Li
       const client = createClient(clocked.baseUrl);
       const reg = await client.post('/api/auth/register', { username: 't3_live_player', password: 'Password!123' });
       assert.equal(reg.status, 201);
+      await client.post('/api/wallet/welcome-bonus', {});
 
       const bets = { tai: 20_000, xiu: 20_000, triple_any: 10_000 };
       const betRes = await client.post('/api/live/bet', { bets, liveRoundId: roundId });
       assert.equal(betRes.status, 200);
-      assert.equal(betRes.json.newBalance, 10_000_000 - 50_000);
+      assert.equal(betRes.json.newBalance, 2_000_000 - 50_000);
 
       const early = await client.post('/api/live/settle', { liveRoundId: roundId });
       assert.ok([400, 425].includes(early.status));
@@ -288,7 +285,7 @@ describe('Tier 3B — Cross-Feature Pairwise: Fairness, Live Clock & Lock/Aid Li
       assert.equal(settle.status, 200);
       const expected = referenceEvaluateRoll(settle.json.dice, bets);
       assert.equal(settle.json.totalWin, expected.totalWin);
-      assert.equal(settle.json.newBalance, 10_000_000 - 50_000 + expected.totalWin);
+      assert.equal(settle.json.newBalance, 2_000_000 - 50_000 + expected.totalWin);
 
       const me = await client.get('/api/auth/me');
       assert.equal(me.status, 200);
@@ -304,6 +301,7 @@ describe('Tier 3B — Cross-Feature Pairwise: Fairness, Live Clock & Lock/Aid Li
     const client = createClient(server.baseUrl);
     const reg = await client.post('/api/auth/register', { username: 't3_lock_resume', password: 'Password!123' });
     assert.equal(reg.status, 201);
+    await client.post('/api/wallet/welcome-bonus', {});
     const uid = reg.json.user.id;
 
     const r1 = await client.post('/api/roll', { bets: { tai: 10_000 } });
@@ -322,28 +320,25 @@ describe('Tier 3B — Cross-Feature Pairwise: Fairness, Live Clock & Lock/Aid Li
     assert.equal(login.json.user.balance, savedBal);
   });
 
-  it('T3.7: Drain Balance (<10k) -> Bankruptcy Aid (+500k) -> Roll -> Ledger & Leaderboard', async () => {
+  it('T3.7: Register (0 ₫) -> Claim 1-Time Welcome Bonus (+2M) -> Roll -> Retired Aid 410 -> Ledger & Leaderboard', async () => {
     const client = createClient(server.baseUrl);
     const reg = await client.post('/api/auth/register', { username: 't3_aid_roller', password: 'Password!123' });
     assert.equal(reg.status, 201);
-    const uid = reg.json.user.id;
+    assert.equal(reg.json.user.balance, 0);
 
-    const drainRes = await adminClient.post(`/api/admin/users/${uid}/adjust-balance`, {
-      amount: -(10_000_000 - 5_000),
-      reason: 'Drain for pairwise aid roll',
-    });
-    assert.equal(drainRes.status, 200);
+    const wb = await client.post('/api/wallet/welcome-bonus', {});
+    assert.equal(wb.status, 200);
+    assert.equal(wb.json.balance, 2_000_000);
 
-    const aid = await client.post('/api/wallet/bankruptcy-aid', {});
-    assert.equal(aid.status, 200);
-    assert.equal(aid.json.balance, 505_000);
+    const retiredAid = await client.post('/api/wallet/bankruptcy-aid', {});
+    assert.equal(retiredAid.status, 410);
 
     const roll = await client.post('/api/roll', { bets: { tai: 5_000 } });
     assert.equal(roll.status, 200);
 
     const me = await client.get('/api/auth/me');
     assert.equal(me.status, 200);
-    assert.ok(me.json.ledger.some((e) => e.type === 'bankruptcy_aid'));
+    assert.ok(me.json.ledger.some((e) => e.type === 'welcome_bonus'));
     assert.ok(me.json.ledger.some((e) => e.type === 'bet'));
 
     const lb = await createClient(server.baseUrl).get('/api/leaderboard');
@@ -367,6 +362,7 @@ describe('Tier 3C — Cross-Feature Pairwise: Idempotency/Revocation, Breakeven,
     const client = createClient(server.baseUrl);
     const reg = await client.post('/api/auth/register', { username: 't3_idem_pw', password: 'OldPassword!123' });
     assert.equal(reg.status, 201);
+    await client.post('/api/wallet/welcome-bonus', {});
 
     const r1 = await client.post(
       '/api/roll',
@@ -409,6 +405,7 @@ describe('Tier 3C — Cross-Feature Pairwise: Idempotency/Revocation, Breakeven,
     const client = createClient(server.baseUrl);
     const reg = await client.post('/api/auth/register', { username: 't3_breakeven', password: 'Password!123' });
     assert.equal(reg.status, 201);
+    await client.post('/api/wallet/welcome-bonus', {});
 
     let before = (await client.get('/api/auth/me')).json.user.balance;
     let found = false;
@@ -442,6 +439,8 @@ describe('Tier 3C — Cross-Feature Pairwise: Idempotency/Revocation, Breakeven,
       ]);
       assert.equal(reg1.status, 201);
       assert.equal(reg2.status, 201);
+      await p1.post('/api/wallet/welcome-bonus', {});
+      await p2.post('/api/wallet/welcome-bonus', {});
 
       const b1 = { tai: 50_000 };
       const b2 = { xiu: 30_000 };
@@ -464,8 +463,8 @@ describe('Tier 3C — Cross-Feature Pairwise: Idempotency/Revocation, Breakeven,
 
       const e1 = referenceEvaluateRoll(s1.json.dice, b1);
       const e2 = referenceEvaluateRoll(s2.json.dice, b2);
-      assert.equal(s1.json.newBalance, 10_000_000 - 50_000 + e1.totalWin);
-      assert.equal(s2.json.newBalance, 10_000_000 - 30_000 + e2.totalWin);
+      assert.equal(s1.json.newBalance, 2_000_000 - 50_000 + e1.totalWin);
+      assert.equal(s2.json.newBalance, 2_000_000 - 30_000 + e2.totalWin);
     } finally {
       await clocked.close();
     }

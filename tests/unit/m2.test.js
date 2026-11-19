@@ -612,7 +612,7 @@ describe('lib/db.js — Concurrency, Idempotency, Guest Upgrade & Fairness Rotat
   it('enforces adjustBalanceAtomic cooldowns, bankruptcy threshold, negative guards & leaderboard', async () => {
     const db = createIsolatedDb();
     await db.init();
-    assert.deepEqual(LEDGER_TYPES, ['bet', 'win', 'refund', 'daily_bonus', 'bankruptcy_aid', 'admin_adjust']);
+    assert.deepEqual(LEDGER_TYPES, ['bet', 'win', 'refund', 'welcome_bonus', 'daily_bonus', 'bankruptcy_aid', 'admin_adjust']);
 
     const u1 = await db.createUser({ username: 'whale', passwordHash: await hashPassword('p123456'), balance: 1_000 });
     const u2 = await db.createUser({ username: 'dolphin', passwordHash: await hashPassword('p123456'), balance: 500_000 });
@@ -668,6 +668,21 @@ describe('lib/db.js — Concurrency, Idempotency, Guest Upgrade & Fairness Rotat
     assert.equal(lb.byBalance[0].username, 'whale');
     assert.equal(lb.byBalance[1].username, 'dolphin');
     assert.equal(lb.byBalance[0].passwordHash, undefined);
+
+    // One-time Welcome Bonus (+2M once per account -> 409 on 2nd attempt) in JSON driver
+    const newcomer = await db.createUser({ username: 'json_newcomer', passwordHash: await hashPassword('p123456') });
+    assert.equal(newcomer.balance, 0);
+    assert.equal(newcomer.welcomeBonusClaimed, false);
+    const wb1 = await db.claimWelcomeBonusAtomic({ userId: newcomer.id, idempotencyKey: 'json-wb-1', now });
+    assert.equal(wb1.balance, 2_000_000);
+    assert.equal(wb1.user.welcomeBonusClaimed, true);
+    assert.equal(wb1.ledgerEntry.type, 'welcome_bonus');
+    assert.equal(wb1.ledgerEntry.balanceBefore, 0);
+    assert.equal(wb1.ledgerEntry.balanceAfter, 2_000_000);
+    await assert.rejects(
+      () => db.claimWelcomeBonusAtomic({ userId: newcomer.id, idempotencyKey: 'json-wb-2', now }),
+      (err) => err.code === 'WELCOME_BONUS_ALREADY_CLAIMED' && err.status === 409
+    );
   });
 
   it('preserves __proto__, constructor, and prototype keys in computeIdempotencyHash without collision or pollution', () => {
@@ -1378,7 +1393,7 @@ describe('lib/db.js — Upstash REST POST / ["EVAL", ...] & PostgreSQL Drivers',
         const [
           hasIdem, reqHash, deltaStr, txType, reason, refId, allowLockedStr,
           minBalanceAfterStr, cooldownField, cooldownMsStr, hasMaxBeforeStr,
-          maxBalanceBeforeStr, ledgerId, nowStr
+          maxBalanceBeforeStr, ledgerId, nowStr, claimOnceField = ''
         ] = args;
         const delta = Number(deltaStr);
         const allowLocked = allowLockedStr === '1';
@@ -1397,6 +1412,9 @@ describe('lib/db.js — Upstash REST POST / ["EVAL", ...] & PostgreSQL Drivers',
         if (!rawUser) return cjsonEncode({ err: 'USER_NOT_FOUND' });
         const user = JSON.parse(rawUser);
         if (!allowLocked && user.locked) return cjsonEncode({ err: 'USER_LOCKED' });
+        if (claimOnceField && user[claimOnceField]) {
+          return cjsonEncode({ err: 'WELCOME_BONUS_ALREADY_CLAIMED' });
+        }
 
         const b0 = user.balance || 0;
         if (hasMaxBefore && b0 >= maxBalanceBefore) {
@@ -1427,6 +1445,7 @@ describe('lib/db.js — Upstash REST POST / ["EVAL", ...] & PostgreSQL Drivers',
         lists.get(ledgerKey).unshift(cjsonEncode(ledgerEntry));
 
         user.balance = b1;
+        if (claimOnceField) user[claimOnceField] = true;
         if (cooldownField !== '') user[cooldownField] = now;
         user.casVersion = (user.casVersion || 0) + 1;
         user.updatedAt = now;
@@ -2262,6 +2281,18 @@ describe('lib/db.js — Upstash REST POST / ["EVAL", ...] & PostgreSQL Drivers',
         }),
         (err) => err.code === 'INVALID_AMOUNT' && err.status === 400
       );
+
+      // 8. Upstash Lua one-time Welcome Bonus (+2M once -> 409 on 2nd claim)
+      const upNew = await db.createUser({ username: 'UpstashNewcomer', passwordHash: await hashPassword('InitPass123') });
+      assert.equal(upNew.balance, 0);
+      assert.equal(upNew.welcomeBonusClaimed, false);
+      const upWb1 = await db.claimWelcomeBonusAtomic({ userId: upNew.id, idempotencyKey: 'up-wb-1', now: 9500 });
+      assert.equal(upWb1.balance, 2_000_000);
+      assert.equal(upWb1.user.welcomeBonusClaimed, true);
+      await assert.rejects(
+        () => db.claimWelcomeBonusAtomic({ userId: upNew.id, idempotencyKey: 'up-wb-2', now: 9600 }),
+        (err) => err.code === 'WELCOME_BONUS_ALREADY_CLAIMED' && err.status === 409
+      );
     } finally {
       await mock.close();
     }
@@ -2408,6 +2439,7 @@ describe('lib/db.js — Upstash REST POST / ["EVAL", ...] & PostgreSQL Drivers',
         u.last_bankruptcy_aid_at = params[3];
         u.cas_version = params[4];
         u.updated_at = String(params[5]);
+        if (params.length > 6) u.welcome_bonus_claimed = Boolean(params[6]);
         return { rows: [] };
       }
       if (normalized.startsWith('SELECT * FROM wallet_ledger WHERE user_id = $1 ORDER BY timestamp DESC, seq DESC')) {
@@ -2582,6 +2614,17 @@ describe('lib/db.js — Upstash REST POST / ["EVAL", ...] & PostgreSQL Drivers',
     assert.equal(pgConcurrent[0].status, 'rejected');
     assert.equal(pgConcurrent[0].reason.code, 'INVALID_BETS');
     assert.equal(pgConcurrent[0].reason.status, 400);
+
+    // 6. PG one-time Welcome Bonus (+2M once -> 409 on 2nd claim)
+    const pgNew = await db.createUser({ username: 'PgNewcomer', passwordHash: await hashPassword('pass1234') });
+    assert.equal(pgNew.balance, 0);
+    const pgWb1 = await db.claimWelcomeBonusAtomic({ userId: pgNew.id, idempotencyKey: 'pg-wb-1', now: 6400 });
+    assert.equal(pgWb1.balance, 2_000_000);
+    assert.equal(pgWb1.user.welcomeBonusClaimed, true);
+    await assert.rejects(
+      () => db.claimWelcomeBonusAtomic({ userId: pgNew.id, idempotencyKey: 'pg-wb-2', now: 6500 }),
+      (err) => err.code === 'WELCOME_BONUS_ALREADY_CLAIMED' && err.status === 409
+    );
     assert.equal(pgConcurrent[1].status, 'fulfilled');
     assert.equal(pgConcurrent[1].value.ticket.bets.tai, 1_000_000_000);
     assert.equal(pgConcurrent[1].value.newBalance, 2_000_000_000);
@@ -2695,10 +2738,15 @@ describe('lib/auth.js — scrypt, timingSafeEqual & Recovery Codes', () => {
     assert.equal(recFailed[0].reason.code, 'INVALID_RECOVERY_CODE');
     assert.equal(recFailed[0].reason.status, 401);
 
+    const overflowUser = await db.createUser({
+      username: 'overflowUser',
+      passwordHash: await hashPassword('OldPass123'),
+      balance: 10_000
+    });
     // Positive safe-integer overflow in JSON adjustBalanceAtomic rejects 400 INVALID_AMOUNT
     await assert.rejects(
       () => db.adjustBalanceAtomic({
-        userId: user.id,
+        userId: overflowUser.id,
         delta: Number.MAX_SAFE_INTEGER,
         type: 'admin_adjust',
         reason: 'Overflow test'

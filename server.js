@@ -571,25 +571,11 @@ function createApp(options = {}) {
     });
   });
 
-  app.post('/api/auth/guest', async (req, res) => {
-    const cfg = resolveConfig();
-    const db = resolveDb(cfg);
-    const suffix = crypto.randomBytes(6).toString('hex');
-    const username = `guest_${suffix}`;
-    const displayName = `Khách VIP #${suffix.slice(0, 4).toUpperCase()}`;
-
-    const created = await db.createUser({
-      username,
-      displayName,
-      role: 'user',
-      isGuest: true,
-      passwordHash: null,
-      recoveryCodeHash: null,
-      now: nowFn()
+  app.post('/api/auth/guest', (_req, res) => {
+    return res.status(403).json({
+      error: 'Tài khoản Khách đã bị vô hiệu hóa. Vui lòng đăng ký hoặc đăng nhập tài khoản để tham gia.',
+      code: 'GUEST_DISABLED'
     });
-
-    issueSessionCookie(res, created, cfg);
-    return res.status(201).json({ user: sanitizeUser(created) });
   });
 
   app.post('/api/auth/upgrade', requireAuth, async (req, res) => {
@@ -638,56 +624,39 @@ function createApp(options = {}) {
 
   // ==================== WALLET & LEADERBOARD ROUTES ====================
 
-  app.post('/api/wallet/daily-bonus', requireAuth, async (req, res) => {
+  app.post('/api/wallet/welcome-bonus', requireAuth, async (req, res) => {
     const cfg = resolveConfig();
     const db = resolveDb(cfg);
     const idempotencyKey = readIdempotencyKey(req);
 
-    const result = await db.adjustBalanceAtomic({
+    const result = await db.claimWelcomeBonusAtomic({
       userId: req.user.id,
-      delta: cfg.DAILY_BONUS_AMOUNT,
-      type: 'daily_bonus',
-      reason: 'Điểm danh nhận thưởng 24h',
-      refId: 'daily_bonus',
+      amount: cfg.WELCOME_BONUS_AMOUNT,
       idempotencyKey,
-      cooldownField: 'lastDailyBonusAt',
-      cooldownMs: cfg.DAILY_BONUS_COOLDOWN_MS,
       now: nowFn()
     });
 
     return res.json({
       balance: result.balance,
-      bonusAmount: cfg.DAILY_BONUS_AMOUNT,
-      nextEligibleAt: result.nextEligibleAt,
+      bonusAmount: cfg.WELCOME_BONUS_AMOUNT,
+      welcomeBonusClaimed: true,
+      replayed: Boolean(result.replayed),
       ledgerEntry: result.ledgerEntry,
       user: result.user
     });
   });
 
-  app.post('/api/wallet/bankruptcy-aid', requireAuth, async (req, res) => {
-    const cfg = resolveConfig();
-    const db = resolveDb(cfg);
-    const idempotencyKey = readIdempotencyKey(req);
-
-    const result = await db.adjustBalanceAtomic({
-      userId: req.user.id,
-      delta: cfg.BANKRUPTCY_AID_AMOUNT,
-      type: 'bankruptcy_aid',
-      reason: 'Trợ cấp phục hồi vốn',
-      refId: 'bankruptcy_aid',
-      idempotencyKey,
-      cooldownField: 'lastBankruptcyAidAt',
-      cooldownMs: cfg.BANKRUPTCY_COOLDOWN_MS,
-      maxBalanceBefore: cfg.BANKRUPTCY_THRESHOLD,
-      now: nowFn()
+  app.post('/api/wallet/daily-bonus', requireAuth, (_req, res) => {
+    return res.status(410).json({
+      error: 'Thưởng điểm danh 24h đã được gỡ bỏ. Mỗi tài khoản nhận ưu đãi tân thủ +2.000.000 ₫ đúng 1 lần.',
+      code: 'FEATURE_DISABLED'
     });
+  });
 
-    return res.json({
-      balance: result.balance,
-      aidAmount: cfg.BANKRUPTCY_AID_AMOUNT,
-      nextEligibleAt: result.nextEligibleAt,
-      ledgerEntry: result.ledgerEntry,
-      user: result.user
+  app.post('/api/wallet/bankruptcy-aid', requireAuth, (_req, res) => {
+    return res.status(410).json({
+      error: 'Trợ cấp phục hồi vốn đã được gỡ bỏ.',
+      code: 'FEATURE_DISABLED'
     });
   });
 
@@ -1038,7 +1007,13 @@ function createApp(options = {}) {
     const offset = Math.max(0, Number.isFinite(parsedOffset) ? parsedOffset : 0);
 
     const data = await db.listUsers({ q, limit, offset });
-    return res.json(data);
+    const effectiveDriver = db.effectiveDriver || cfg.dbDriver;
+    const isEphemeralTmp = Boolean(cfg.isVercel && effectiveDriver === 'json');
+    return res.json({
+      ...data,
+      storageMode: isEphemeralTmp ? 'ephemeral_tmp' : effectiveDriver,
+      isPersistent: !isEphemeralTmp
+    });
   });
 
   app.post('/api/admin/users/:id/adjust-balance', requireAuth, requireAdmin, async (req, res) => {

@@ -28,6 +28,8 @@ class Sicbo3DEngine {
     this.floorY = 0.3 + 0.14 + (1.24 * 0.5);
 
     this.isRolling = false;
+    this.isAnimatingBowl = false;
+    this._bowlOpenedAtTime = 0;
     this.physicsState = null;
 
     this.isBowlClosed = false;
@@ -40,6 +42,7 @@ class Sicbo3DEngine {
     this.keyLight = null;
     this._bokehDummy = new THREE.Object3D();
     this.bokehMaxCount = 150;
+    this.cameraFraming = { fov: 34, baseY: 11.4, baseZ: 16.0, lookY: 0.4, lookZ: -0.42 };
 
     this.rafId = null;
     this.isPaused = (typeof document !== 'undefined') ? Boolean(document.hidden) : false;
@@ -67,10 +70,11 @@ class Sicbo3DEngine {
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.FogExp2(0x131017, 0.019);
 
-    // 2. Cinematic 35mm Camera
-    this.camera = new THREE.PerspectiveCamera(34, width / height, 0.1, 100);
-    this.camera.position.set(0, 11.4, 16.0);
-    this.camera.lookAt(0, 0.4, -0.3);
+    // 2. Cinematic 35mm Camera (auto-adapts framing for portrait mobile viewports)
+    this.cameraFraming = this.computeCameraFraming(width, height);
+    this.camera = new THREE.PerspectiveCamera(this.cameraFraming.fov, Math.max(0.25, width / Math.max(1, height)), 0.1, 100);
+    this.camera.position.set(0, this.cameraFraming.baseY, this.cameraFraming.baseZ);
+    this.camera.lookAt(0, this.cameraFraming.lookY, this.cameraFraming.lookZ);
 
     // 3. Renderer (Capped at 1.5x DPR for buttery-smooth 60-144 FPS in Brave & Chrome)
     this.renderer = new THREE.WebGLRenderer({
@@ -813,7 +817,25 @@ class Sicbo3DEngine {
     this.mouse.targetY = y * 1.15;
   }
 
-  getQuaternionForFace(number, yawAngle = null) {
+  computeCameraFraming(width, height) {
+    const safeH = Math.max(1, height);
+    const aspect = width / safeH;
+    if (aspect >= 1) {
+      return { fov: 34, baseY: 11.4, baseZ: 16.0, lookY: 0.4, lookZ: -0.42 };
+    }
+    // Smoothly widen FOV and pull back + aim slightly below tray center so the 3D bowl & tray
+    // sit cleanly inside the top viewport window on narrow portrait phones without horizontal clipping.
+    const t = Math.min(1, Math.max(0, (1.0 - aspect) / 0.58));
+    return {
+      fov: 34 + t * 14,
+      baseY: 11.4 + t * 3.4,
+      baseZ: 16.0 + t * 6.2,
+      lookY: 0.4 - t * 3.1,
+      lookZ: -0.42 + t * 0.42
+    };
+  }
+
+  getAlignmentQuaternionForFace(number) {
     const UP = new THREE.Vector3(0, 1, 0);
     const localNormals = {
       1: new THREE.Vector3(1, 0, 0),
@@ -830,7 +852,12 @@ class Sicbo3DEngine {
     } else {
       qAlign.setFromUnitVectors(n, UP);
     }
+    return qAlign;
+  }
 
+  getQuaternionForFace(number, yawAngle = null) {
+    const UP = new THREE.Vector3(0, 1, 0);
+    const qAlign = this.getAlignmentQuaternionForFace(number);
     const yaw = yawAngle !== null
       ? yawAngle
       : (Math.random() * Math.PI * 2);
@@ -838,11 +865,48 @@ class Sicbo3DEngine {
     return qYaw.multiply(qAlign);
   }
 
-  setDiceFacesInstant(diceValues) {
+  /**
+   * Swing-twist projection onto the world Y axis so a spinning die settles onto `number`
+   * using the nearest horizontal yaw without an unnatural snap on the final frame.
+   */
+  getClosestQuaternionForFace(number, currentQuat) {
+    const qAlign = this.getAlignmentQuaternionForFace(number);
+    if (!currentQuat) return qAlign;
+    const qRem = currentQuat.clone().multiply(qAlign.clone().invert());
+    const qTwistY = new THREE.Quaternion(0, qRem.y, 0, qRem.w);
+    if (qTwistY.lengthSq() < 1e-6) {
+      return qAlign;
+    }
+    qTwistY.normalize();
+    return qTwistY.multiply(qAlign);
+  }
+
+  computeDeterministicYaw(seed, index) {
+    const s = Number(seed) || 0;
+    const raw = Math.sin((s + 1) * 12.9898 + (index + 1) * 78.233) * 43758.5453;
+    return (raw - Math.floor(raw)) * Math.PI * 2;
+  }
+
+  setDiceFacesInstant(diceValues, opts = {}) {
+    const { preserveYaw = true, yawSeed = null } = (opts && typeof opts === 'object')
+      ? opts
+      : { yawSeed: opts };
     diceValues.forEach((val, i) => {
-      const q = this.getQuaternionForFace(val);
-      this.diceGroup[i].quaternion.copy(q);
-      this.diceGroup[i].userData.currentValue = val;
+      const die = this.diceGroup[i];
+      if (!die) return;
+      if (preserveYaw && die.userData.currentValue === val) {
+        return;
+      }
+      let q;
+      if (yawSeed !== null && yawSeed !== undefined) {
+        q = this.getQuaternionForFace(val, this.computeDeterministicYaw(yawSeed, i));
+      } else if (preserveYaw) {
+        q = this.getClosestQuaternionForFace(val, die.quaternion);
+      } else {
+        q = this.getQuaternionForFace(val);
+      }
+      die.quaternion.copy(q);
+      die.userData.currentValue = val;
     });
   }
 
@@ -904,6 +968,7 @@ class Sicbo3DEngine {
 
   closeBowl(callback, isSqueezeOpaque = false) {
     this.isBowlClosed = true;
+    this.isAnimatingBowl = true;
     this.isSqueezeOpaque = Boolean(isSqueezeOpaque);
     this.setContainerTouchLock(this.isSqueezeOpaque);
     this.bowlOffset = { x: 0, z: 0 };
@@ -929,6 +994,7 @@ class Sicbo3DEngine {
       duration: 0.38,
       ease: 'power2.inOut',
       onComplete: () => {
+        this.isAnimatingBowl = false;
         if (callback) callback();
       }
     });
@@ -961,7 +1027,10 @@ class Sicbo3DEngine {
           (Math.random() - 0.5) * 26,
           (Math.random() - 0.5) * 28
         );
-        b.targetQuat = this.getQuaternionForFace(targetDice[i]);
+        b.targetQuat = null;
+        b.settleStartQuat = null;
+        b.settleStartPos = null;
+        b.restPos = null;
         b.mesh.userData.currentValue = targetDice[i];
         b.lastBounceMs = 0;
       });
@@ -969,7 +1038,9 @@ class Sicbo3DEngine {
       this.physicsState = {
         elapsed: 0,
         agitationEnd: 0.68,
+        settleStart: 0.88,
         totalDuration: 1.55,
+        settleTargetsLocked: false,
         nextKickIndex: 0,
         kickTimes: [0.20, 0.44],
         targetDice,
@@ -1016,137 +1087,175 @@ class Sicbo3DEngine {
       this.bowlGroup.rotation.z *= 0.7;
     }
 
-    const SUBSTEPS = 4;
-    const subDt = Math.min(dt, 0.04) / SUBSTEPS;
-    const GRAVITY = -36.0;
-    const MAX_WALL_R = 2.48;
-    const MAX_CEIL_Y = this.floorY + 1.9;
-    const MIN_DICE_SEP = this.diceSize * 1.18;
-    const nowMs = performance.now();
+    const settleStart = ps.settleStart || 0.88;
+    const isSettling = t >= settleStart;
 
-    const triggerClack = (body, impactSpeed) => {
-      if (impactSpeed < 1.2) return;
-      if (nowMs - body.lastBounceMs < 55) return;
-      body.lastBounceMs = nowMs;
-      const intensity = Math.min(1.0, Math.max(0.14, (impactSpeed - 1.0) / 10.0));
-      if (ps.onBounceSound) ps.onBounceSound(intensity);
-    };
+    if (!isSettling) {
+      const SUBSTEPS = 4;
+      const subDt = Math.min(dt, 0.04) / SUBSTEPS;
+      const GRAVITY = -36.0;
+      const MAX_CEIL_Y = this.floorY + 1.9;
 
-    const qStep = new THREE.Quaternion();
-    const axisTmp = new THREE.Vector3();
-    const deltaTmp = new THREE.Vector3();
+      const qStep = new THREE.Quaternion();
+      const axisTmp = new THREE.Vector3();
+      const deltaTmp = new THREE.Vector3();
 
-    for (let step = 0; step < SUBSTEPS; step++) {
-      for (let i = 0; i < 3; i++) {
-        const b = this.diceBodies[i];
-        b.vel.y += GRAVITY * subDt;
+      for (let step = 0; step < SUBSTEPS; step++) {
+        for (let i = 0; i < 3; i++) {
+          const b = this.diceBodies[i];
+          b.vel.y += GRAVITY * subDt;
 
-        b.vel.multiplyScalar(1 - 0.45 * subDt);
-        b.angVel.multiplyScalar(1 - 1.1 * subDt);
+          b.vel.multiplyScalar(1 - 0.45 * subDt);
+          b.angVel.multiplyScalar(1 - 1.1 * subDt);
 
-        b.pos.x += b.vel.x * subDt;
-        b.pos.y += b.vel.y * subDt;
-        b.pos.z += b.vel.z * subDt;
+          b.pos.x += b.vel.x * subDt;
+          b.pos.y += b.vel.y * subDt;
+          b.pos.z += b.vel.z * subDt;
 
-        if (b.pos.y > MAX_CEIL_Y) {
-          b.pos.y = MAX_CEIL_Y;
-          if (b.vel.y > 0) {
-            triggerClack(b, b.vel.y * 0.7);
-            b.vel.y = -b.vel.y * 0.45;
+          if (b.pos.y > MAX_CEIL_Y) {
+            b.pos.y = MAX_CEIL_Y;
+            if (b.vel.y > 0) {
+              triggerClack(b, b.vel.y * 0.7);
+              b.vel.y = -b.vel.y * 0.45;
+            }
           }
-        }
 
-        if (b.pos.y < this.floorY) {
-          const impact = -b.vel.y;
-          b.pos.y = this.floorY;
-          if (impact > 1.2) {
-            triggerClack(b, impact);
-            b.vel.y = impact * 0.44;
-            b.angVel.x += (Math.random() - 0.5) * impact * 1.6;
-            b.angVel.z += (Math.random() - 0.5) * impact * 1.6;
-          } else {
-            b.vel.y = 0;
-          }
-          const floorFriction = t > ps.agitationEnd ? (1 - 7.5 * subDt) : (1 - 2.5 * subDt);
-          b.vel.x *= Math.max(0, floorFriction);
-          b.vel.z *= Math.max(0, floorFriction);
-          b.angVel.multiplyScalar(Math.max(0, 1 - 6.0 * subDt));
-        }
-
-        const rx = b.pos.x - this.trayCenter.x;
-        const rz = b.pos.z - this.trayCenter.z;
-        const distR = Math.hypot(rx, rz);
-        if (distR > MAX_WALL_R) {
-          const nx = rx / distR;
-          const nz = rz / distR;
-          b.pos.x = this.trayCenter.x + nx * MAX_WALL_R;
-          b.pos.z = this.trayCenter.z + nz * MAX_WALL_R;
-          const vDotN = b.vel.x * nx + b.vel.z * nz;
-          if (vDotN > 0) {
-            triggerClack(b, vDotN * 0.85);
-            b.vel.x -= (1 + 0.52) * vDotN * nx;
-            b.vel.z -= (1 + 0.52) * vDotN * nz;
-          }
-        }
-
-        const wLen = b.angVel.length();
-        if (wLen > 0.001) {
-          axisTmp.copy(b.angVel).divideScalar(wLen);
-          qStep.setFromAxisAngle(axisTmp, wLen * subDt);
-          b.mesh.quaternion.premultiply(qStep).normalize();
-        }
-      }
-
-      for (let i = 0; i < 3; i++) {
-        for (let j = i + 1; j < 3; j++) {
-          const A = this.diceBodies[i];
-          const B = this.diceBodies[j];
-          deltaTmp.subVectors(B.pos, A.pos);
-          let dist = deltaTmp.length();
-
-          if (dist < MIN_DICE_SEP) {
-            if (dist < 1e-4) {
-              deltaTmp.set(1, 0, 0);
-              dist = 1e-4;
+          if (b.pos.y < this.floorY) {
+            const impact = -b.vel.y;
+            b.pos.y = this.floorY;
+            if (impact > 1.2) {
+              triggerClack(b, impact);
+              b.vel.y = impact * 0.44;
+              b.angVel.x += (Math.random() - 0.5) * impact * 1.6;
+              b.angVel.z += (Math.random() - 0.5) * impact * 1.6;
             } else {
-              deltaTmp.divideScalar(dist);
+              b.vel.y = 0;
             }
+            const floorFriction = t > ps.agitationEnd ? (1 - 7.5 * subDt) : (1 - 2.5 * subDt);
+            b.vel.x *= Math.max(0, floorFriction);
+            b.vel.z *= Math.max(0, floorFriction);
+            b.angVel.multiplyScalar(Math.max(0, 1 - 6.0 * subDt));
+          }
 
-            const overlap = (MIN_DICE_SEP - dist) * 0.52;
-            A.pos.addScaledVector(deltaTmp, -overlap);
-            B.pos.addScaledVector(deltaTmp, overlap);
+          const rx = b.pos.x - this.trayCenter.x;
+          const rz = b.pos.z - this.trayCenter.z;
+          const distR = Math.hypot(rx, rz);
+          if (distR > MAX_WALL_R) {
+            const nx = rx / distR;
+            const nz = rz / distR;
+            b.pos.x = this.trayCenter.x + nx * MAX_WALL_R;
+            b.pos.z = this.trayCenter.z + nz * MAX_WALL_R;
+            const vDotN = b.vel.x * nx + b.vel.z * nz;
+            if (vDotN > 0) {
+              triggerClack(b, vDotN * 0.85);
+              b.vel.x -= (1 + 0.52) * vDotN * nx;
+              b.vel.z -= (1 + 0.52) * vDotN * nz;
+            }
+          }
 
-            if (A.pos.y < this.floorY) A.pos.y = this.floorY;
-            if (B.pos.y < this.floorY) B.pos.y = this.floorY;
+          const wLen = b.angVel.length();
+          if (wLen > 0.001) {
+            axisTmp.copy(b.angVel).divideScalar(wLen);
+            qStep.setFromAxisAngle(axisTmp, wLen * subDt);
+            b.mesh.quaternion.premultiply(qStep).normalize();
+          }
+        }
 
-            const rvx = B.vel.x - A.vel.x;
-            const rvy = B.vel.y - A.vel.y;
-            const rvz = B.vel.z - A.vel.z;
-            const velAlongNormal = rvx * deltaTmp.x + rvy * deltaTmp.y + rvz * deltaTmp.z;
+        for (let i = 0; i < 3; i++) {
+          for (let j = i + 1; j < 3; j++) {
+            const A = this.diceBodies[i];
+            const B = this.diceBodies[j];
+            deltaTmp.subVectors(B.pos, A.pos);
+            let dist = deltaTmp.length();
 
-            if (velAlongNormal < 0) {
-              const restitution = 0.54;
-              const jImp = -(1 + restitution) * velAlongNormal * 0.5;
-              A.vel.addScaledVector(deltaTmp, -jImp);
-              B.vel.addScaledVector(deltaTmp, jImp);
+            if (dist < MIN_DICE_SEP) {
+              if (dist < 1e-4) {
+                deltaTmp.set(1, 0, 0);
+                dist = 1e-4;
+              } else {
+                deltaTmp.divideScalar(dist);
+              }
 
-              triggerClack(A, Math.abs(velAlongNormal));
+              const overlap = (MIN_DICE_SEP - dist) * 0.52;
+              A.pos.addScaledVector(deltaTmp, -overlap);
+              B.pos.addScaledVector(deltaTmp, overlap);
 
-              A.angVel.x += (Math.random() - 0.5) * jImp * 2.2;
-              A.angVel.z += (Math.random() - 0.5) * jImp * 2.2;
-              B.angVel.x -= (Math.random() - 0.5) * jImp * 2.2;
-              B.angVel.z -= (Math.random() - 0.5) * jImp * 2.2;
+              if (A.pos.y < this.floorY) A.pos.y = this.floorY;
+              if (B.pos.y < this.floorY) B.pos.y = this.floorY;
+
+              const rvx = B.vel.x - A.vel.x;
+              const rvy = B.vel.y - A.vel.y;
+              const rvz = B.vel.z - A.vel.z;
+              const velAlongNormal = rvx * deltaTmp.x + rvy * deltaTmp.y + rvz * deltaTmp.z;
+
+              if (velAlongNormal < 0) {
+                const restitution = 0.54;
+                const jImp = -(1 + restitution) * velAlongNormal * 0.5;
+                A.vel.addScaledVector(deltaTmp, -jImp);
+                B.vel.addScaledVector(deltaTmp, jImp);
+
+                triggerClack(A, Math.abs(velAlongNormal));
+
+                A.angVel.x += (Math.random() - 0.5) * jImp * 2.2;
+                A.angVel.z += (Math.random() - 0.5) * jImp * 2.2;
+                B.angVel.x -= (Math.random() - 0.5) * jImp * 2.2;
+                B.angVel.z -= (Math.random() - 0.5) * jImp * 2.2;
+              }
             }
           }
         }
       }
-    }
+    } else {
+      if (!ps.settleTargetsLocked) {
+        ps.settleTargetsLocked = true;
+        // Compute non-overlapping rest positions & closest-yaw orientations once so the settle arc
+        // arrives smoothly at rest with zero teleport/snap on the final frame.
+        const restCoords = this.diceBodies.map((b, i) => ({
+          x: b.pos.x + b.vel.x * 0.06,
+          z: b.pos.z + b.vel.z * 0.06,
+          startPos: b.pos.clone(),
+          startQuat: b.mesh.quaternion.clone(),
+          targetQuat: this.getClosestQuaternionForFace(ps.targetDice[i], b.mesh.quaternion)
+        }));
+        for (let iter = 0; iter < 4; iter++) {
+          for (let i = 0; i < 3; i++) {
+            for (let j = i + 1; j < 3; j++) {
+              const dx = restCoords[j].x - restCoords[i].x;
+              const dz = restCoords[j].z - restCoords[i].z;
+              const d = Math.hypot(dx, dz) || 0.001;
+              if (d < MIN_DICE_SEP) {
+                const push = (MIN_DICE_SEP - d) * 0.52;
+                restCoords[i].x -= (dx / d) * push;
+                restCoords[i].z -= (dz / d) * push;
+                restCoords[j].x += (dx / d) * push;
+                restCoords[j].z += (dz / d) * push;
+              }
+            }
+            const rx = restCoords[i].x - this.trayCenter.x;
+            const rz = restCoords[i].z - this.trayCenter.z;
+            const rLen = Math.hypot(rx, rz);
+            if (rLen > MAX_WALL_R) {
+              restCoords[i].x = this.trayCenter.x + (rx / rLen) * MAX_WALL_R;
+              restCoords[i].z = this.trayCenter.z + (rz / rLen) * MAX_WALL_R;
+            }
+          }
+        }
+        this.diceBodies.forEach((b, i) => {
+          b.settleStartPos = restCoords[i].startPos;
+          b.settleStartQuat = restCoords[i].startQuat;
+          b.targetQuat = restCoords[i].targetQuat;
+          b.restPos = new THREE.Vector3(restCoords[i].x, this.floorY, restCoords[i].z);
+          b.vel.set(0, 0, 0);
+          b.angVel.set(0, 0, 0);
+        });
+      }
 
-    if (t > 0.92) {
-      const settleProgress = Math.min(1, (t - 0.92) / (ps.totalDuration - 0.92));
-      const slerpAlpha = Math.min(1, settleProgress * settleProgress * 0.38);
-      this.diceBodies.forEach(b => {
-        b.mesh.quaternion.slerp(b.targetQuat, slerpAlpha);
+      const settleProgress = Math.min(1, (t - settleStart) / (ps.totalDuration - settleStart));
+      const posEase = 1 - Math.pow(1 - settleProgress, 3);
+      const rotEase = 1 - Math.pow(1 - settleProgress, 3);
+      this.diceBodies.forEach((b) => {
+        b.pos.lerpVectors(b.settleStartPos, b.restPos, posEase);
+        b.mesh.quaternion.copy(b.settleStartQuat).slerp(b.targetQuat, rotEase);
       });
     }
 
@@ -1154,28 +1263,12 @@ class Sicbo3DEngine {
       this.bowlGroup.position.set(this.trayCenter.x, 0.35, this.trayCenter.z);
       this.bowlGroup.rotation.set(0, 0, 0);
 
-      for (let i = 0; i < 3; i++) {
-        for (let j = i + 1; j < 3; j++) {
-          const A = this.diceBodies[i];
-          const B = this.diceBodies[j];
-          const dx = B.pos.x - A.pos.x;
-          const dz = B.pos.z - A.pos.z;
-          const d = Math.hypot(dx, dz) || 0.001;
-          if (d < MIN_DICE_SEP) {
-            const push = (MIN_DICE_SEP - d) * 0.52;
-            A.pos.x -= (dx / d) * push;
-            A.pos.z -= (dz / d) * push;
-            B.pos.x += (dx / d) * push;
-            B.pos.z += (dz / d) * push;
-          }
-        }
-      }
-
       this.diceBodies.forEach(b => {
+        if (b.restPos) b.pos.copy(b.restPos);
         b.pos.y = this.floorY;
         b.vel.set(0, 0, 0);
         b.angVel.set(0, 0, 0);
-        b.mesh.quaternion.copy(b.targetQuat);
+        if (b.targetQuat) b.mesh.quaternion.copy(b.targetQuat);
       });
 
       const doneCb = ps.onComplete;
@@ -1187,6 +1280,7 @@ class Sicbo3DEngine {
 
   openBowlQuick(callback) {
     this.isBowlClosed = false;
+    this.isAnimatingBowl = true;
     this.isDraggingBowl = false;
     this.isSqueezeOpaque = false;
     this.setContainerTouchLock(false);
@@ -1222,6 +1316,8 @@ class Sicbo3DEngine {
       duration: 0.72,
       ease: 'power2.out',
       onComplete: () => {
+        this.isAnimatingBowl = false;
+        this._bowlOpenedAtTime = this.clock ? this.clock.elapsedTime : 0;
         if (callback) callback();
       }
     });
@@ -1332,7 +1428,9 @@ class Sicbo3DEngine {
 
   onResize() {
     const width = window.innerWidth;
-    const height = window.innerHeight;
+    const height = Math.max(1, window.innerHeight);
+    this.cameraFraming = this.computeCameraFraming(width, height);
+    this.camera.fov = this.cameraFraming.fov;
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     if (this.renderer) {
@@ -1403,15 +1501,17 @@ class Sicbo3DEngine {
     this.mouse.x += (this.mouse.targetX - this.mouse.x) * 0.048;
     this.mouse.y += (this.mouse.targetY - this.mouse.y) * 0.048;
 
+    const framing = this.cameraFraming || { fov: 34, baseY: 11.4, baseZ: 16.0, lookY: 0.4, lookZ: -0.42 };
     this.camera.position.x = this.mouse.x * (1 - this.squeezeZoom * 0.35);
-    this.camera.position.y = (11.4 - this.squeezeZoom * 1.45) + this.mouse.y * (1 - this.squeezeZoom * 0.35);
-    this.camera.position.z = 16.0 - this.squeezeZoom * 2.1;
-    this.camera.lookAt(0, 0.4, -0.42);
+    this.camera.position.y = (framing.baseY - this.squeezeZoom * 1.45) + this.mouse.y * (1 - this.squeezeZoom * 0.35);
+    this.camera.position.z = framing.baseZ - this.squeezeZoom * 2.1;
+    this.camera.lookAt(0, framing.lookY, framing.lookZ);
 
     this.updateBokehAndProps(time);
 
-    if (!this.isBowlClosed && !this.isRolling && this.bowlGroup) {
-      this.bowlGroup.position.y = 6.9 + Math.sin(time * 1.6) * 0.11;
+    if (!this.isBowlClosed && !this.isRolling && !this.isAnimatingBowl && this.bowlGroup) {
+      const bobPhase = Math.max(0, time - (this._bowlOpenedAtTime || 0));
+      this.bowlGroup.position.y = 6.9 + Math.sin(bobPhase * 1.6) * 0.11;
     }
 
     this.renderer.render(this.scene, this.camera);

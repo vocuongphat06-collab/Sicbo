@@ -47,7 +47,7 @@
 
   <!-- ==================== 1. TOP CENTER PILL NAVBAR (THREEUI DOCK MAGNIFICATION) ==================== -->
   <header class="top-pill-nav" data-spec>
-    <button id="btnQuickTopRoll" class="pill-circle-icon" data-dock title="Chốt Cược Phòng Live">🎲</button>
+    <button id="btnQuickTopRoll" class="pill-circle-icon" data-dock title="Về Sân Khấu 3D &amp; Đồng Bộ Live">🎲</button>
 
     <!-- Single Synchronized 45s Live Room Pill -->
     <button id="btnModeLive" class="pill-mode-btn live-only-pill active" data-dock title="Phòng Live Đồng Bộ 45 giây/phiên (40s nhận cược • 5s mở bát)">
@@ -60,12 +60,11 @@
     <button id="btnOpenChronicles" class="pill-tab" data-dock>📜 CẦU &amp; FAIR</button>
     <button id="btnOpenLeaderboard" class="pill-tab" data-dock title="Bảng Xếp Hạng Đại Gia">🏆 XẾP HẠNG</button>
     <button id="btnOpenRules" class="pill-tab" data-dock title="Luật Sicbo Macau &amp; Tỷ lệ">? Luật &amp; Tỷ lệ</button>
-    <button id="btnDailyBonus" class="pill-tab pill-bonus" data-dock title="Điểm danh mỗi 24h nhận +2,000,000 ₫">🎁 +2M</button>
-    <button id="btnBankruptcyAid" class="pill-tab pill-aid" data-dock title="Trợ cấp phá sản +500,000 ₫ (khi &lt; 10,000 ₫)">🆘 +500K</button>
+    <button id="btnWelcomeBonus" class="pill-tab pill-bonus hidden" data-dock title="Nhận ưu đãi Tân Thủ +2,000,000 ₫ (duy nhất 1 lần/tài khoản)">🎁 Nhận 2M Tân Thủ</button>
 
     <div class="pill-vault" data-dock>
       <span class="vault-dot"></span>
-      <span id="userBalance">10,000,000</span>
+      <span id="userBalance">0</span>
       <span class="vault-curr">₫</span>
     </div>
 
@@ -263,7 +262,7 @@
         <div class="dice-mini-showcase" id="resDiceStrip">
           <span>⚃</span><span>⚄</span><span>⚅</span>
         </div>
-        <button id="btnCardRollTrigger" class="card-corner-arrow" title="Chốt Cược Phiên Live">↗</button>
+        <button id="btnCardRollTrigger" class="card-corner-arrow" title="Mở Bảng Cầu &amp; Lịch Sử">↗</button>
       </div>
     </div>
 
@@ -314,12 +313,7 @@
     <!-- Left Telemetry & FPS -->
     <div class="hud-left-meta">
       <span id="hudFps" class="fps-badge">60 FPS</span>
-      <label class="squeeze-toggle-pill" title="Phòng Live 45s tự mở bát đồng bộ trong 5s cuối để khớp nhịp toàn bàn">
-        <input type="checkbox" id="chkSqueeze">
-        <span class="toggle-dot"></span>
-        <span>Nặn Bát 3D</span>
-      </label>
-      <span id="statusPill" class="hud-status-text">Phòng Live 45s đồng bộ • Chọn phỉnh và đặt cược trong 40s nhận cược.</span>
+      <span id="statusPill" class="hud-status-text">Phòng Live 45s đồng bộ • Đăng nhập để nhận +2M Tân Thủ &amp; đặt cược.</span>
     </div>
 
     <!-- Center Tactile Ceramic Chips & Quick Actions -->
@@ -533,12 +527,12 @@
         <div class="fairness-grid-2col">
           <!-- Left: Active Pre-Commit for Upcoming Round -->
           <div class="fair-box">
-            <span class="drawer-label">1. CAM KẾT PHIÊN SẮP LẮC (PRE-COMMIT)</span>
+            <span class="drawer-label">1. CAM KẾT PHIÊN LIVE 45S ĐỒNG BỘ (PRE-COMMIT SHA-256)</span>
             <p class="fair-desc">
-              Trước mỗi lần lắc, Server tạo trước <code>Server Seed</code> bí mật và công bố mã băm <code>SHA-256</code> không thể thay đổi. Bạn có thể tự đặt <code>Client Seed</code> của riêng mình:
+              Mỗi phiên <strong>Phòng Live 45s</strong> đều khóa trước mã băm cam kết <code>roundSeedHash</code> (SHA-256) trên Server ngay trong pha đặt cược 40s trước khi mở bát ở giây 40–45:
             </p>
             <div class="fair-field">
-              <label>Next Server Seed Hash (SHA-256 đã khóa trước khi lắc)</label>
+              <label>Cam kết SHA-256 của Phiên Live hiện tại (roundSeedHash)</label>
               <div class="fair-copy-row">
                 <input id="inputNextHash" type="text" readonly value="">
                 <button id="btnCopyNextHash" class="btn-fair-sm">Copy</button>
@@ -546,15 +540,15 @@
             </div>
             <div class="fair-field-row">
               <div class="fair-field">
-                <label>Client Seed của bạn (Tùy chỉnh tự do)</label>
+                <label>Client Seed hồ sơ (dùng cho audit cá nhân)</label>
                 <div class="fair-copy-row">
                   <input id="inputClientSeed" type="text" value="sovereign-vip-888">
                   <button id="btnRotateClientSeed" class="btn-fair-sm" type="button">Đổi Client Seed</button>
                 </div>
               </div>
               <div class="fair-field fair-field-narrow">
-                <label>Next Nonce</label>
-                <input id="inputNextNonce" type="text" readonly value="1">
+                <label>Phiên / Nonce</label>
+                <input id="inputNextNonce" type="text" readonly value="LIVE">
               </div>
             </div>
             <div id="rotatedSeedRevealBox" class="rotated-seed-box hidden"></div>
@@ -648,7 +642,7 @@
         </div>
         <div class="auth-actions-row">
           <button id="btnLoginSubmit" class="btn-run-verify" type="button">Đăng Nhập Salon</button>
-          <button id="btnPlayAsGuest" class="btn-fair-sm" type="button">Chơi Thử Khách • +2,000,000 ₫</button>
+          <span class="auth-helper-hint">Chưa có tài khoản? Mở tab <strong>Đăng ký</strong> để nhận ưu đãi Tân Thủ +2,000,000 ₫ (1 lần).</span>
         </div>
       </div>
 
@@ -668,7 +662,7 @@
           <label for="regPassword">Mật khẩu (tối thiểu 6 ký tự)</label>
           <input id="regPassword" type="password" autocomplete="new-password" placeholder="Nhập mật khẩu mạnh...">
         </div>
-        <button id="btnRegisterSubmit" class="btn-run-verify" type="button">Tạo Tài Khoản (+10,000,000 ₫)</button>
+        <button id="btnRegisterSubmit" class="btn-run-verify" type="button">Tạo Tài Khoản (0 ₫ • Mở khóa +2M Tân Thủ)</button>
       </div>
 
       <!-- One-time Recovery Code Reveal Box -->
@@ -755,6 +749,10 @@
           <h3>Quản Trị Hội Viên &amp; Sổ Cái Chip</h3>
         </div>
         <button id="btnCloseAdmin" class="btn-close-drawer">✕ Đóng</button>
+      </div>
+
+      <div id="adminStorageWarning" class="auth-feedback is-error hidden">
+        ⚠ Cảnh báo lưu trữ tạm: Server đang dùng file JSON trong <code>/tmp</code> trên Vercel (chưa gắn Upstash Redis / Postgres) — dữ liệu có thể tự reset khi Serverless cold start.
       </div>
 
       <div class="fair-copy-row">

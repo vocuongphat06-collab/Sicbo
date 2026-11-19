@@ -30,6 +30,8 @@ describe('Tier 1 — F2: Full Macau Sicbo Mathematics & Breakeven', () => {
       displayName: 'Macau VIP',
     });
     assert.equal(reg.status, 201);
+    const wb = await client.post('/api/wallet/welcome-bonus', {});
+    assert.equal(wb.status, 200);
   });
 
   after(async () => {
@@ -229,6 +231,7 @@ describe('Tier 1 — F3: Provably Fair Web Crypto Parity & Serverless Live Clock
         password: 'Password!123',
       });
       assert.equal(reg.status, 201);
+      await client.post('/api/wallet/welcome-bonus', {});
 
       const meBefore = await client.get('/api/auth/me');
       const initialHash = meBefore.json.fairness.serverSeedHash;
@@ -290,6 +293,7 @@ describe('Tier 1 — F3: Provably Fair Web Crypto Parity & Serverless Live Clock
         password: 'Password!123',
       });
       assert.equal(reg.status, 201);
+      await client.post('/api/wallet/welcome-bonus', {});
 
       const s0 = await client.get('/api/live/state');
       assert.equal(s0.status, 200);
@@ -312,7 +316,7 @@ describe('Tier 1 — F3: Provably Fair Web Crypto Parity & Serverless Live Clock
         liveRoundId: expectedRoundId,
       });
       assert.equal(betRes.status, 200);
-      assert.equal(betRes.json.newBalance, 10_000_000 - 50_000);
+      assert.equal(betRes.json.newBalance, 2_000_000 - 50_000);
 
       const earlySettle = await client.post('/api/live/settle', { liveRoundId: expectedRoundId });
       assert.ok([400, 425].includes(earlySettle.status), `Premature settle must be 400/425, got ${earlySettle.status}`);
@@ -332,6 +336,7 @@ describe('Tier 1 — F3: Provably Fair Web Crypto Parity & Serverless Live Clock
         password: 'Password!123',
       });
       assert.equal(reg.status, 201);
+      await client.post('/api/wallet/welcome-bonus', {});
 
       const bets = { tai: 20_000, xiu: 20_000, triple_any: 10_000 };
       const betRes = await client.post('/api/live/bet', {
@@ -359,7 +364,7 @@ describe('Tier 1 — F3: Provably Fair Web Crypto Parity & Serverless Live Clock
       const expectedEval = referenceEvaluateRoll(revState.json.dice, bets);
       assert.deepEqual(settle1.json.dice, revState.json.dice);
       assert.equal(settle1.json.totalWin, expectedEval.totalWin);
-      assert.equal(settle1.json.newBalance, 10_000_000 - 50_000 + expectedEval.totalWin);
+      assert.equal(settle1.json.newBalance, 2_000_000 - 50_000 + expectedEval.totalWin);
 
       // Second settle call must not double-credit winnings
       const settle2 = await client.post('/api/live/settle', { liveRoundId: expectedRoundId });
@@ -424,7 +429,10 @@ describe('Tier 1 — F7: Express Routes, Fairness Rotate, Security Headers & Mul
       const authState = await anonClient.get('/api/state');
       assert.equal(authState.status, 200);
       assert.equal(authState.json.user.username, 'f7_state_user');
-      assert.equal(authState.json.user.balance, 10_000_000);
+      assert.equal(authState.json.user.balance, 0);
+      await anonClient.post('/api/wallet/welcome-bonus', {});
+      const authClaimed = await anonClient.get('/api/state');
+      assert.equal(authClaimed.json.user.balance, 2_000_000);
     } finally {
       await server.close();
     }
@@ -439,6 +447,7 @@ describe('Tier 1 — F7: Express Routes, Fairness Rotate, Security Headers & Mul
         password: 'Password!123',
       });
       assert.equal(reg.status, 201);
+      await client.post('/api/wallet/welcome-bonus', {});
 
       const res = await client.post('/api/roll', { bets: { tai: 10_000 } });
       assert.equal(res.status, 200);

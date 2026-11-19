@@ -77,8 +77,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const state = {
     user: null,
-    balance: 10000000,
-    displayedBalance: 10000000,
+    balance: 0,
+    displayedBalance: 0,
     selectedChip: 10000,
     currentBets: {},
     lastBets: {},
@@ -92,6 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
     liveLastSecTick: 40,
     liveIntervalId: null,
     liveRevealedRoundId: null,
+    lastRenderedDiceRoundId: null,
     liveLastCommittedHashRoundId: null,
     liveRoundSeedHash: '',
     liveTicket: null,
@@ -133,8 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     btnOpenLeaderboard: document.getElementById('btnOpenLeaderboard'),
     btnOpenRules: document.getElementById('btnOpenRules'),
-    btnDailyBonus: document.getElementById('btnDailyBonus'),
-    btnBankruptcyAid: document.getElementById('btnBankruptcyAid'),
+    btnWelcomeBonus: document.getElementById('btnWelcomeBonus'),
     btnAuthModal: document.getElementById('btnAuthModal'),
     navUserBadge: document.getElementById('navUserBadge'),
     btnOpenAdmin: document.getElementById('btnOpenAdmin'),
@@ -164,7 +164,6 @@ document.addEventListener('DOMContentLoaded', () => {
     btnQuickOpen: document.getElementById('btnQuickOpen'),
 
     statusPill: document.getElementById('statusPill'),
-    chkSqueeze: document.getElementById('chkSqueeze'),
     chipsSelector: document.getElementById('chipsSelector'),
     chipAllIn: document.getElementById('chipAllIn'),
     btnUndo: document.getElementById('btnUndo'),
@@ -232,7 +231,6 @@ document.addEventListener('DOMContentLoaded', () => {
     loginUsername: document.getElementById('loginUsername'),
     loginPassword: document.getElementById('loginPassword'),
     btnLoginSubmit: document.getElementById('btnLoginSubmit'),
-    btnPlayAsGuest: document.getElementById('btnPlayAsGuest'),
     regUsername: document.getElementById('regUsername'),
     regDisplayName: document.getElementById('regDisplayName'),
     regPassword: document.getElementById('regPassword'),
@@ -257,6 +255,7 @@ document.addEventListener('DOMContentLoaded', () => {
     authFormFeedback: document.getElementById('authFormFeedback'),
 
     adminModal: document.getElementById('adminModal'),
+    adminStorageWarning: document.getElementById('adminStorageWarning'),
     btnCloseAdmin: document.getElementById('btnCloseAdmin'),
     adminSearchInput: document.getElementById('adminSearchInput'),
     btnAdminSearch: document.getElementById('btnAdminSearch'),
@@ -529,22 +528,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  const savedSqueeze = readPref(LS_KEYS.squeeze, 'false') === 'true';
-  if (el.chkSqueeze) {
-    el.chkSqueeze.checked = savedSqueeze;
-    engine.setBowlOpaqueForSqueeze(savedSqueeze);
-    el.chkSqueeze.addEventListener('change', () => {
-      const checked = Boolean(el.chkSqueeze.checked);
-      writePref(LS_KEYS.squeeze, checked);
-      sound.playTick();
-      engine.setBowlOpaqueForSqueeze(checked);
-      showStatus(
-        checked
-          ? 'Phòng Live 45s luôn tự động mở bát đồng bộ ở pha 5s cuối để mọi người chơi khớp nhịp.'
-          : 'Bát pha lê trong suốt: Theo dõi 3 viên xúc xắc Live đồng bộ theo giờ máy chủ.'
-      );
-    });
-  }
+  engine.setBowlOpaqueForSqueeze(false);
+
+  const unlockAudioOnFirstGesture = () => {
+    if (sound && sound.enabled && sound.init) {
+      sound.init();
+    }
+  };
+  window.addEventListener('pointerdown', unlockAudioOnFirstGesture, { once: true, passive: true });
+  window.addEventListener('touchstart', unlockAudioOnFirstGesture, { once: true, passive: true });
 
   function applyGraphicsQuality(mode) {
     const valid = (mode === 'high' || mode === 'balanced' || mode === 'eco') ? mode : 'high';
@@ -692,14 +684,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (res.status === 401 && state.user && !options.skipAuthReset) {
       state.user = null;
-      state.balance = 10000000;
-      state.displayedBalance = 10000000;
+      state.balance = 0;
+      state.displayedBalance = 0;
       state.liveTicket = null;
       state.liveRevealedRoundId = null;
       state.personalHistory = [];
       state.walletLedger = [];
       renderPersonalLedger();
       renderWalletLedger();
+      renderAllBetSpots();
       if (el.adminModal && el.adminModal.classList.contains('open')) {
         closeModal(el.adminModal);
       }
@@ -721,8 +714,8 @@ document.addEventListener('DOMContentLoaded', () => {
     } finally {
       state.inFlightOps.delete(opKey);
       if (btnEl) {
-        if (opKey === 'bankruptcyAid') {
-          btnEl.disabled = state.balance >= 10000;
+        if (opKey === 'welcomeBonus') {
+          btnEl.disabled = Boolean(!state.user || state.user.welcomeBonusClaimed);
         } else {
           btnEl.disabled = wasDisabled;
         }
@@ -791,6 +784,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (el.btnOpenAdmin) {
       el.btnOpenAdmin.classList.toggle('hidden', !(u && u.role === 'admin'));
     }
+    if (el.btnWelcomeBonus) {
+      const canClaimWelcome = Boolean(u && !u.welcomeBonusClaimed);
+      el.btnWelcomeBonus.classList.toggle('hidden', !canClaimWelcome);
+      el.btnWelcomeBonus.disabled = !canClaimWelcome;
+    }
     if (el.tabBtnProfile) {
       el.tabBtnProfile.classList.toggle('hidden', !u);
     }
@@ -842,26 +840,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  async function ensureGuestSessionIfNeeded(totalWager = 0) {
+  function requireAuthenticatedSession(actionHint = 'Vui lòng đăng nhập hoặc đăng ký tài khoản để đặt cược!') {
     if (state.user) return true;
-    if (totalWager > GUEST_MAX_BALANCE) {
-      showToast('Số tiền cược vượt hạn mức Khách (2,000,000 ₫). Vui lòng đăng nhập hoặc đăng ký!', 'error');
-      openAuthModal('authPaneLogin');
-      return false;
-    }
-    try {
-      const { res, json } = await apiFetch('/api/auth/guest', { method: 'POST', skipAuthReset: true });
-      if (!res.ok || !json || !json.user) return false;
-      state.user = json.user;
-      state.balance = json.user.balance;
-      state.displayedBalance = json.user.balance;
-      updateAuthUI();
-      updateUI();
-      showToast(`Đã tạo nhanh phiên Khách (${formatVND(json.user.balance)} ₫).`, 'info', 2600);
-      return true;
-    } catch (_) {
-      return false;
-    }
+    showToast(actionHint, 'info', 2800);
+    openAuthModal('authPaneLogin');
+    return false;
   }
 
   if (el.btnLoginSubmit) {
@@ -899,30 +882,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }));
   }
 
-  if (el.btnPlayAsGuest) {
-    el.btnPlayAsGuest.addEventListener('click', () => withInFlightGuard('authGuest', el.btnPlayAsGuest, async () => {
-      try {
-        const { res, json } = await apiFetch('/api/auth/guest', { method: 'POST', skipAuthReset: true });
-        if (!res.ok || !json || !json.user) {
-          setAuthFeedback((json && json.error) || 'Không thể tạo phiên Khách.', 'error');
-          return;
-        }
-        resetClientSessionState({ clearBets: true });
-        state.user = json.user;
-        state.balance = json.user.balance;
-        state.displayedBalance = json.user.balance;
-        updateAuthUI();
-        updateUI();
-        closeModal(el.authModal);
-        showToast('Đã vào bàn với tài khoản Khách (+2,000,000 ₫).', 'success');
-        if (sound && sound.playBonus) sound.playBonus();
-        await fetchServerState();
-      } catch (_) {
-        setAuthFeedback('Không kết nối được máy chủ.', 'error');
-      }
-    }));
-  }
-
   if (el.btnRegisterSubmit) {
     el.btnRegisterSubmit.addEventListener('click', () => withInFlightGuard('authRegister', el.btnRegisterSubmit, async () => {
       const username = (el.regUsername?.value || '').trim();
@@ -953,8 +912,8 @@ document.addEventListener('DOMContentLoaded', () => {
           el.recoveryCodeValue.textContent = json.recoveryCode;
           el.recoveryCodeRevealBox.classList.remove('hidden');
         }
-        setAuthFeedback('Đăng ký thành công! Hãy sao chép Mã Khôi Phục bên trên trước khi đóng.', 'success');
-        showToast('Tạo tài khoản thành công (+10,000,000 ₫)!', 'success');
+        setAuthFeedback('Đăng ký thành công! Hãy sao chép Mã Khôi Phục và nhấn "🎁 Nhận 2M Tân Thủ" ở thanh trên.', 'success');
+        showToast('Tạo tài khoản thành công (0 ₫)! Nhấn "🎁 Nhận 2M Tân Thủ" để nhận ưu đãi 1 lần!', 'success', 3800);
         if (sound && sound.playBonus) sound.playBonus();
         await fetchServerState();
       } catch (_) {
@@ -1067,8 +1026,8 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (_) {}
       state.user = null;
       resetClientSessionState({ clearBets: true });
-      state.balance = 10000000;
-      state.displayedBalance = 10000000;
+      state.balance = 0;
+      state.displayedBalance = 0;
       updateAuthUI();
       updateUI();
       closeModal(el.authModal);
@@ -1077,54 +1036,42 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ==================== 5. WALLET OPS, LEADERBOARD & ADMIN OPS ====================
-  if (el.btnDailyBonus) {
-    el.btnDailyBonus.addEventListener('click', () => withInFlightGuard('dailyBonus', el.btnDailyBonus, async () => {
+  if (el.btnWelcomeBonus) {
+    el.btnWelcomeBonus.addEventListener('click', () => withInFlightGuard('welcomeBonus', el.btnWelcomeBonus, async () => {
       sound.playTick();
-      if (!(await ensureGuestSessionIfNeeded(0))) {
-        openAuthModal('authPaneLogin');
+      if (!requireAuthenticatedSession('Đăng nhập hoặc đăng ký tài khoản để nhận ưu đãi Tân Thủ +2,000,000 ₫!')) {
+        return;
+      }
+      if (state.user && state.user.welcomeBonusClaimed) {
+        updateAuthUI();
+        showToast('Tài khoản của bạn đã nhận ưu đãi Tân Thủ +2,000,000 ₫ rồi.', 'info');
         return;
       }
       try {
-        const { res, json } = await apiFetch('/api/wallet/daily-bonus', { method: 'POST' });
-        if (!res.ok) {
-          showToast((json && json.error) || 'Chưa đến thời gian điểm danh 24h.', 'error');
+        const ikey = generateIdempotencyKey();
+        const { res, json } = await apiFetch('/api/wallet/welcome-bonus', {
+          method: 'POST',
+          idempotencyKey: ikey
+        });
+        if (!res.ok || !json) {
+          showToast((json && json.error) || 'Không thể nhận ưu đãi Tân Thủ.', 'error');
+          if (res.status === 409 && state.user) {
+            state.user.welcomeBonusClaimed = true;
+            updateAuthUI();
+          }
           return;
         }
+        if (json.user) state.user = json.user;
+        else if (state.user) state.user.welcomeBonusClaimed = true;
         state.balance = json.balance;
         state.displayedBalance = json.balance;
-        updateUI();
         updateAuthUI();
+        updateUI();
         if (sound && sound.playBonus) sound.playBonus();
-        showToast(`Điểm danh 24h thành công: +${formatVND(json.bonusAmount || 2000000)} ₫!`, 'success');
+        showToast(`Đã nhận Ưu đãi Tân Thủ: +${formatVND(json.bonusAmount || 2000000)} ₫ (duy nhất 1 lần)!`, 'success');
         await fetchServerState();
       } catch (_) {
-        showToast('Không thể điểm danh khi ngoại tuyến.', 'error');
-      }
-    }));
-  }
-
-  if (el.btnBankruptcyAid) {
-    el.btnBankruptcyAid.addEventListener('click', () => withInFlightGuard('bankruptcyAid', el.btnBankruptcyAid, async () => {
-      sound.playTick();
-      if (!(await ensureGuestSessionIfNeeded(0))) {
-        openAuthModal('authPaneLogin');
-        return;
-      }
-      try {
-        const { res, json } = await apiFetch('/api/wallet/bankruptcy-aid', { method: 'POST' });
-        if (!res.ok) {
-          showToast((json && json.error) || 'Chỉ nhận trợ cấp khi số dư dưới 10,000 ₫ và hết cooldown.', 'error');
-          return;
-        }
-        state.balance = json.balance;
-        state.displayedBalance = json.balance;
-        updateUI();
-        updateAuthUI();
-        if (sound && sound.playBonus) sound.playBonus();
-        showToast(`Đã nhận Trợ cấp phá sản: +${formatVND(json.aidAmount || 500000)} ₫!`, 'success');
-        await fetchServerState();
-      } catch (_) {
-        showToast('Không thể nhận trợ cấp khi ngoại tuyến.', 'error');
+        showToast('Không thể kết nối máy chủ khi nhận ưu đãi.', 'error');
       }
     }));
   }
@@ -1203,6 +1150,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!res.ok || !json) {
         showToast((json && json.error) || 'Không có quyền Admin.', 'error');
         return;
+      }
+      if (el.adminStorageWarning) {
+        el.adminStorageWarning.classList.toggle('hidden', json.storageMode !== 'ephemeral_tmp');
       }
       const users = Array.isArray(json.users) ? json.users : [];
       el.adminUsersTableBody.innerHTML = '';
@@ -1455,6 +1405,18 @@ document.addEventListener('DOMContentLoaded', () => {
     return settledCount > 0;
   }
 
+  function syncStaticDiceForRound(roundObj) {
+    if (!roundObj || !Array.isArray(roundObj.dice)) return;
+    if (state.isRolling || state.isSqueezeActive) return;
+    const rid = Number(roundObj.id ?? roundObj.liveRoundId);
+    if (Number.isFinite(rid) && state.lastRenderedDiceRoundId === rid) return;
+    if (Number.isFinite(rid)) state.lastRenderedDiceRoundId = rid;
+    engine.setDiceFacesInstant(roundObj.dice, {
+      preserveYaw: false,
+      yawSeed: Number.isFinite(rid) ? rid : 0
+    });
+  }
+
   async function syncLiveStateFromServer(triggerReveal = false) {
     if (triggerReveal && state.isSyncingLiveReveal) return null;
     if (triggerReveal) state.isSyncingLiveReveal = true;
@@ -1474,14 +1436,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const prevLastId = state.history.length > 0 ? state.history[state.history.length - 1].id : null;
         const nextLast = json.recentHistory[json.recentHistory.length - 1];
         state.history = json.recentHistory;
+        syncStaticDiceForRound(nextLast);
         if (prevLastId !== nextLast.id) {
           if (el.roundCounterLabel) el.roundCounterLabel.textContent = `MACAU LIVE • #${nextLast.id}`;
-          engine.setDiceFacesInstant(nextLast.dice);
           renderRoadmapAndBigRoad();
         }
       }
       restoreLiveTicketFromServer(json.ticket, json.unsettledTickets, json.liveRoundId);
       updateLiveTimerUI();
+      renderAllBetSpots();
       updateUI();
       updateFairnessCommitUI();
       if (state.user && typeof json.liveRoundId === 'number') {
@@ -1501,6 +1464,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function handleLiveRoundReveal(liveState) {
     if (state.isRolling || state.isSubmittingRoll || state.isSqueezeActive) return false;
     state.liveRevealedRoundId = liveState.liveRoundId;
+    state.lastRenderedDiceRoundId = liveState.liveRoundId;
 
     if (state.user && typeof liveState.liveRoundId === 'number') {
       await settleUnsettledPastLiveTickets(liveState.unsettledTickets, liveState.liveRoundId);
@@ -1556,9 +1520,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function updateLiveTimerUI() {
+    const prevRoundId = state.liveRoundId;
     const clk = getClientLiveClock();
     state.liveRoundId = clk.liveRoundId;
     state.livePhase = clk.phase;
+    if (prevRoundId !== null && prevRoundId !== clk.liveRoundId) {
+      renderAllBetSpots();
+    }
 
     const sec = clk.phase === 'BETTING'
       ? Math.max(0, Math.ceil(clk.betRemainingMs / 1000))
@@ -1645,15 +1613,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function updateUI() {
     if (el.userBalance) el.userBalance.textContent = formatVND(state.displayedBalance);
+    if (el.chipAllIn && el.chipAllIn.classList.contains('active')) {
+      state.selectedChip = state.balance;
+    }
     const totalWager = Object.values(state.currentBets).reduce((a, b) => a + b, 0);
     if (el.currentWagerSummary) {
       const hasTicket = state.liveTicket && !state.liveTicket.settled && state.liveTicket.liveRoundId === state.liveRoundId && state.liveTicket.totalBet > 0;
       el.currentWagerSummary.textContent = totalWager > 0
         ? `${formatVND(totalWager)} ₫`
         : (hasTicket ? `Đã chốt ${formatVND(state.liveTicket.totalBet)} ₫` : '0 ₫');
-    }
-    if (el.btnBankruptcyAid) {
-      el.btnBankruptcyAid.disabled = state.balance >= 10000;
     }
   }
 
@@ -1766,15 +1734,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       } else {
         state.user = null;
+        state.balance = 0;
+        state.displayedBalance = 0;
         resetClientSessionState({ clearBets: !state.isRolling && !state.isSqueezeActive });
       }
       if (Array.isArray(data.history) && data.history.length > 0) {
         state.history = data.history;
         const latest = data.history[data.history.length - 1];
         if (el.roundCounterLabel) el.roundCounterLabel.textContent = `MACAU LIVE • #${latest.id}`;
-        if (!state.isRolling && !state.isSqueezeActive) {
-          engine.setDiceFacesInstant(latest.dice);
-        }
+        syncStaticDiceForRound(latest);
         renderRoadmapAndBigRoad();
       }
       if (Array.isArray(data.personalHistory)) {
@@ -1884,12 +1852,17 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderBetSpot(spot, betKey) {
     if (!spot) return;
     const amount = state.currentBets[betKey] || 0;
+    const committed = (
+      state.liveTicket &&
+      state.liveTicket.liveRoundId === state.liveRoundId &&
+      state.liveTicket.bets
+    ) ? (state.liveTicket.bets[betKey] || 0) : 0;
     const wagerEl = spot.querySelector('.wager-chip-counter');
     const chipPileEl = spot.querySelector('.spot-chip-pile');
 
     if (amount > 0) {
       if (wagerEl) {
-        wagerEl.textContent = formatVND(amount);
+        wagerEl.textContent = committed > 0 ? `+${formatVND(amount)}` : formatVND(amount);
         wagerEl.classList.add('active');
       }
       if (chipPileEl) {
@@ -1906,7 +1879,25 @@ document.addEventListener('DOMContentLoaded', () => {
         wagerEl.classList.remove('active');
       }
       if (chipPileEl) chipPileEl.innerHTML = '';
-      spot.classList.remove('winner');
+      if (!committed) spot.classList.remove('winner');
+    }
+
+    let committedEl = spot.querySelector('.committed-bet-badge');
+    if (committed > 0) {
+      if (!committedEl) {
+        committedEl = document.createElement('span');
+        committedEl.className = 'committed-bet-badge';
+        spot.appendChild(committedEl);
+      }
+      committedEl.textContent = `✓ Đã chốt ${formatVND(committed)}`;
+      committedEl.classList.add('active');
+      spot.classList.add('has-committed');
+    } else {
+      if (committedEl) {
+        committedEl.textContent = '';
+        committedEl.classList.remove('active');
+      }
+      spot.classList.remove('has-committed');
     }
   }
 
@@ -1933,6 +1924,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function placeOrRemoveChip(betKey, spot, isRemove = false) {
     if (state.isRolling || state.isSqueezeActive) return;
+    if (!isRemove && !requireAuthenticatedSession('Vui lòng đăng nhập hoặc đăng ký tài khoản để đặt cược!')) {
+      return;
+    }
     if (state.mode === 'live' && state.livePhase !== 'BETTING') {
       showToast('Phiên Live đang khóa sổ mở bát. Vui lòng đợi phiên kế tiếp!', 'error', 2200);
       return;
@@ -1961,7 +1955,10 @@ document.addEventListener('DOMContentLoaded', () => {
       : state.selectedChip;
 
     if (chipVal <= 0 || totalWager + chipVal > state.balance) {
-      showToast('Số dư không đủ để đặt thêm phỉnh này. Dùng Điểm danh 24h (+2M) hoặc Trợ cấp!', 'error');
+      const bonusHint = (state.user && !state.user.welcomeBonusClaimed)
+        ? ' Nhấn "🎁 Nhận 2M Tân Thủ" ở thanh trên để nhận ưu đãi!'
+        : '';
+      showToast(`Số dư không đủ để đặt thêm phỉnh này.${bonusHint}`, 'error');
       sound.playTick();
       return;
     }
@@ -2043,6 +2040,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (el.btnDouble) {
     el.btnDouble.addEventListener('click', () => {
       if (state.isRolling || state.isSqueezeActive) return;
+      if (!requireAuthenticatedSession('Vui lòng đăng nhập để điều chỉnh cược!')) return;
       const currentTotal = Object.values(state.currentBets).reduce((a, b) => a + b, 0);
       if (currentTotal <= 0) return;
       if (currentTotal * 2 > state.balance) {
@@ -2066,6 +2064,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (el.btnRebet) {
     el.btnRebet.addEventListener('click', () => {
       if (state.isRolling || state.isSqueezeActive) return;
+      if (!requireAuthenticatedSession('Vui lòng đăng nhập để đặt lại cược!')) return;
       const lastTotal = Object.values(state.lastBets).reduce((a, b) => a + b, 0);
       if (lastTotal <= 0) {
         showToast('Chưa có lịch sử cược phiên trước.', 'info');
@@ -2086,8 +2085,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ==================== 9. ROLL, PRE-SHAKE DEDUCT, COUNT-UP & SQUEEZE FLOW ====================
   if (el.btnRoll) el.btnRoll.addEventListener('click', () => startRoll(state.mode));
-  if (el.btnQuickTopRoll) el.btnQuickTopRoll.addEventListener('click', () => startRoll(state.mode));
-  if (el.btnCardRollTrigger) el.btnCardRollTrigger.addEventListener('click', () => startRoll(state.mode));
+  if (el.btnQuickTopRoll) {
+    el.btnQuickTopRoll.addEventListener('click', () => {
+      sound.playTick();
+      closeAllModals();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      syncLiveStateFromServer(false);
+      showToast('Đã đồng bộ sân khấu Live 45s.', 'info', 1800);
+    });
+  }
+  if (el.btnCardRollTrigger) {
+    el.btnCardRollTrigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openChroniclesDrawer('tabBigRoad');
+    });
+  }
 
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Escape') {
@@ -2117,6 +2129,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     try {
+      if (!requireAuthenticatedSession('Vui lòng đăng nhập hoặc đăng ký tài khoản để đặt cược Live!')) {
+        return false;
+      }
       if (totalWager <= 0) {
         showToast('Hãy đặt ít nhất 1 phỉnh vào cửa cược trước khi chốt cược Live!', 'info');
         return false;
@@ -2126,8 +2141,6 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Đã khóa sổ mở bát, vui lòng đợi phiên Live kế tiếp!', 'error');
         return false;
       }
-      const hadUserSession = Boolean(state.user);
-      if (!(hadUserSession ? true : await ensureGuestSessionIfNeeded(totalWager))) return false;
       if (totalWager > state.balance) {
         showToast('Số dư không đủ để thực hiện cược này.', 'error');
         return false;
@@ -2654,6 +2667,7 @@ document.addEventListener('DOMContentLoaded', () => {
       bet: 'Đặt cược',
       win: 'Trả thưởng',
       refund: 'Hoàn tiền',
+      welcome_bonus: 'Ưu đãi Tân Thủ (+2M)',
       daily_bonus: 'Điểm danh 24h',
       bankruptcy_aid: 'Trợ cấp phá sản',
       admin_adjust: 'Điều chỉnh Admin'
@@ -2710,8 +2724,7 @@ document.addEventListener('DOMContentLoaded', () => {
     el.btnRotateClientSeed.addEventListener('click', () => withInFlightGuard('rotateClientSeed', el.btnRotateClientSeed, async () => {
       sound.playTick();
       const newClientSeed = (el.inputClientSeed?.value || '').trim() || `vip-${randomHex(8)}`;
-      if (!(await ensureGuestSessionIfNeeded(0))) {
-        openAuthModal('authPaneLogin');
+      if (!requireAuthenticatedSession('Đăng nhập để lưu Client Seed cá nhân trên máy chủ!')) {
         return;
       }
       try {
@@ -2833,6 +2846,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   window.__sicboDeriveFairDice = deriveFairDice;
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      updateLiveTimerUI();
+      syncLiveStateFromServer(false);
+      fetchServerState();
+    }
+  });
 
   initLiveRoomUI();
   fetchServerState();

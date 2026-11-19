@@ -1014,6 +1014,31 @@ html, body {
   display: inline-block;
 }
 
+.committed-bet-badge {
+  font-family: var(--font-mono);
+  font-size: calc(9.5 * var(--u));
+  font-weight: 700;
+  color: #10261d;
+  background: linear-gradient(135deg, #7be0b4, #5ec79a);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  padding: 2px 7px;
+  border-radius: 999px;
+  display: none;
+  width: fit-content;
+  margin-top: 2px;
+  box-shadow: 0 2px 8px rgba(94, 199, 154, 0.28);
+}
+.committed-bet-badge.active {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.bet-spot.has-committed {
+  border-color: rgba(94, 199, 154, 0.72) !important;
+  background: rgba(94, 199, 154, 0.11) !important;
+  box-shadow: inset 0 0 0 1px rgba(94, 199, 154, 0.22), 0 6px 18px rgba(16, 48, 34, 0.35);
+}
+
 .spot-chip-pile {
   position: absolute;
   bottom: calc(8 * var(--u));
@@ -2142,6 +2167,11 @@ body.matrix-open .editorial-left-wing .hero-cta-row {
   flex-wrap: wrap;
   align-items: center;
 }
+.auth-helper-hint {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: rgba(244, 242, 236, 0.74);
+}
 .recovery-reveal-box,
 .rotated-seed-box {
   background: rgba(232, 199, 163, 0.11);
@@ -2304,37 +2334,115 @@ body.matrix-open .editorial-left-wing .hero-cta-row {
 .round-result-banner.is-loss { border-color: var(--cinnabar); color: #ffc2cc; }
 .round-result-banner.is-breakeven { border-color: var(--champagne); color: var(--champagne); }
 
-/* ==================== NARROW / SPLIT-SCREEN RESPONSIVE FALLBACK ==================== */
+/* ==================== MOBILE-FIRST & NARROW / SPLIT-SCREEN RESPONSIVE OVERHAUL ==================== */
 @media (max-width: 980px) {
+  :root {
+    --u: clamp(0.92px, 0.24vw, 1.05px);
+  }
   html, body {
+    overflow-x: hidden;
     overflow-y: auto;
     height: auto;
-    min-height: 100vh;
+    min-height: 100dvh;
+  }
+  .hud-crosshair,
+  .threeui-ghost {
+    display: none;
   }
   .top-pill-nav {
-    max-width: 96vw;
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    transform: none;
+    width: auto;
+    max-width: calc(100vw - 16px);
+    padding: 6px 8px;
+    gap: 6px;
+    border-radius: 18px;
     overflow-x: auto;
     scrollbar-width: none;
   }
+  .top-pill-nav .pill-mode-btn,
+  .top-pill-nav .pill-vault,
+  .top-pill-nav .pill-auth-btn,
+  .top-pill-nav .pill-tab,
+  .top-pill-nav .pill-enter-btn,
+  .top-pill-nav .pill-select,
+  .top-pill-nav .pill-circle-icon {
+    flex-shrink: 0;
+    min-height: 38px;
+    font-size: 12px;
+  }
+  .top-pill-nav .pill-mode-btn { order: -4; }
+  .top-pill-nav .pill-vault { order: -3; padding: 6px 12px; font-size: 13px; }
+  .top-pill-nav .pill-auth-btn { order: -2; padding: 6px 12px; }
+  .top-pill-nav #btnWelcomeBonus { order: -1; }
   .center-live-banner {
     top: 62px;
-    padding: 5px 10px;
-    gap: 6px;
-    font-size: 10.5px;
+    padding: 6px 12px;
+    gap: 8px;
+    font-size: 11.5px;
+    max-width: calc(100vw - 16px);
     overflow-x: auto;
     scrollbar-width: none;
+  }
+  .round-result-banner {
+    top: 106px;
+    max-width: calc(100vw - 20px);
+    font-size: 12px;
+    padding: 8px 14px;
+    white-space: normal;
+    text-align: center;
+    border-radius: 14px;
+  }
+  .toast-container {
+    top: auto;
+    bottom: calc(134px + env(safe-area-inset-bottom, 0px));
+    left: 10px;
+    right: 10px;
+    max-width: none;
+    align-items: center;
+  }
+  .toast-item {
+    width: min(420px, 100%);
+    font-size: 13px;
   }
   .editorial-left-wing {
     position: relative;
     top: auto; left: auto; bottom: auto;
-    width: min(560px, 92vw);
-    margin: 106px auto 16px;
+    width: min(560px, calc(100vw - 20px));
+    margin: clamp(260px, 36dvh, 340px) auto 16px;
+    gap: 10px;
+  }
+  .liquid-stage {
+    --pad: 0px;
+    width: 100%;
+    margin: 0;
+    pointer-events: auto;
+  }
+  .liquid-plate {
+    inset: 0;
+  }
+  .liquid-fx {
+    display: none;
+  }
+  .liquid-button {
+    width: 100%;
+    min-height: 46px;
+    justify-content: center;
+    padding: 10px 16px;
+    font-size: 14px;
+  }
+  .wager-chip-counter,
+  .committed-bet-badge {
+    font-size: 11px;
+    padding: 3px 8px;
   }
   .editorial-right-wing {
     position: relative;
     top: auto; right: auto;
-    width: min(560px, 92vw);
-    margin: 0 auto 156px;
+    width: min(560px, calc(100vw - 20px));
+    margin: 0 auto calc(158px + env(safe-area-inset-bottom, 0px));
     align-items: center;
   }
   .card-ethos, .card-fieldnote {
@@ -2351,54 +2459,224 @@ body.matrix-open .editorial-left-wing .hero-cta-row {
     align-items: center;
     left: 8px;
     right: 8px;
-    bottom: 8px;
+    bottom: 0;
+    padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
     gap: 6px;
   }
   .hud-left-meta {
-    padding: 4px 12px;
+    display: none;
   }
   .hud-center-dock {
     width: 100%;
-    flex-wrap: wrap;
-    justify-content: center;
+    flex-direction: column;
+    align-items: stretch;
     border-radius: 18px;
-    padding: 7px 10px;
-    gap: 6px;
+    padding: 8px 10px;
+    gap: 7px;
+  }
+  .dock-divider {
+    display: none;
   }
   .chips-palette {
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 5px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 2px 2px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .chips-palette::-webkit-scrollbar {
+    width: 0;
+    height: 0;
   }
   .zen-chip {
-    width: 32px;
-    height: 32px;
-    font-size: 10px;
+    flex: 0 0 auto;
+    width: 42px;
+    height: 42px;
+    font-size: 11px;
+  }
+  .quick-bet-actions {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn-hud-minimal {
+    min-height: 36px;
+    padding: 6px 11px;
+    font-size: 12px;
   }
   body.matrix-open #fullMatrixModal.open {
-    padding: 12px 10px 180px;
+    padding: 10px 8px calc(188px + env(safe-area-inset-bottom, 0px));
   }
   body.matrix-open #fullMatrixModal .matrix-drawer-card {
-    max-height: calc(100dvh - 196px);
+    max-height: calc(100dvh - 200px);
   }
   body.matrix-open .editorial-left-wing .hero-cta-row {
-    bottom: 128px;
-    right: 12px;
+    left: 10px;
+    right: 10px;
+    bottom: calc(122px + env(safe-area-inset-bottom, 0px));
+    width: auto;
   }
   .fairness-grid-2col,
   .rules-grid {
     grid-template-columns: 1fr;
   }
+  .ledger-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 @media (max-width: 640px) {
+  .top-pill-nav {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    overflow-x: visible;
+    border-radius: 16px;
+  }
+  .top-pill-nav .pill-mode-btn {
+    padding: 6px 10px;
+  }
+  .top-pill-nav .pill-tab,
+  .top-pill-nav .pill-enter-btn,
+  .top-pill-nav .pill-select,
+  .top-pill-nav .pill-circle-icon {
+    min-height: 36px;
+    padding: 5px 10px;
+    font-size: 11.5px;
+  }
+  .center-live-banner {
+    top: 98px;
+    font-size: 11px;
+    padding: 5px 10px;
+  }
+  .round-result-banner {
+    top: 138px;
+  }
+  .editorial-left-wing {
+    margin-top: clamp(275px, 37dvh, 330px);
+  }
+  .primary-gates-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .gate-xiu {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .gate-tai {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .sculpt-center-col {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: 1.15fr 1fr 1fr;
+    gap: 8px;
+  }
+  .sculpt-parity-pair {
+    display: contents;
+  }
+  .sculpt-gate {
+    min-height: 76px;
+    padding: 11px;
+    border-radius: 14px;
+  }
+  .gate-title {
+    font-size: 26px;
+  }
+  .gate-title-sm {
+    font-size: 14px;
+  }
+  .gate-mini {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 10px;
+    min-height: 76px;
+  }
+  .mini-name {
+    font-size: 16px;
+  }
+  .gate-sub,
+  .kanji-watermark,
+  .odds-micro,
+  .mini-odds {
+    font-size: 11px;
+  }
+  .matrix-drawer-card {
+    width: calc(100vw - 14px);
+    padding: 14px;
+    border-radius: 18px;
+    max-height: 88dvh;
+  }
+  .fair-field-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .fair-field-narrow {
+    max-width: none;
+    width: 100%;
+  }
+  .ledger-kpi-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
   .specific-triples-matrix,
   .single-pips-row,
   .doubles-matrix,
   .pairs-matrix {
     grid-template-columns: repeat(3, 1fr);
+    gap: 7px;
   }
   .totals-minimal-row {
     grid-template-columns: repeat(4, 1fr);
+    gap: 7px;
+  }
+  .bet-spot.mini-card,
+  .bet-spot.total-bead,
+  .bet-spot.pair-card {
+    min-height: 54px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 430px) {
+  .top-pill-nav {
+    padding: 5px 6px;
+    gap: 5px;
+  }
+  .top-pill-nav .pill-vault {
+    font-size: 12px;
+    padding: 5px 9px;
+  }
+  .deck-header-line {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .sculpt-center-col {
+    grid-template-columns: 1fr 1fr;
+  }
+  .gate-bao {
+    grid-column: 1 / -1;
+    min-height: 62px;
+  }
+  .zen-chip {
+    width: 40px;
+    height: 40px;
+    font-size: 10.5px;
+  }
+  .specific-triples-matrix,
+  .single-pips-row,
+  .doubles-matrix,
+  .pairs-matrix {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .totals-minimal-row {
+    grid-template-columns: repeat(3, 1fr);
   }
 }

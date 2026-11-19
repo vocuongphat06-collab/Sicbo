@@ -92,6 +92,7 @@ describe('Tier 5 — T5-1: Input, Protocol & CORS Hardening', () => {
     });
     assert.equal(rPlayer.status, 201);
     playerId = rPlayer.json.user.id;
+    await playerClient.post('/api/wallet/welcome-bonus', {});
   });
 
   after(async () => {
@@ -372,16 +373,14 @@ describe('Tier 5 — T5-2: JWT Attacks, Session Revocation, Auth Edges & Admin R
       newPassword: 'LockedPass!333',
     })).status, 403);
 
-    // Guest calling /api/auth/change-password -> 400
+    // POST /api/auth/guest is rejected (403 GUEST_DISABLED)
     const guest = createClient(server.baseUrl);
-    await guest.post('/api/auth/guest', {});
-    assert.equal((await guest.post('/api/auth/change-password', {
-      currentPassword: 'any',
-      newPassword: 'NewPassword!123',
-    })).status, 400);
+    const gDenied = await guest.post('/api/auth/guest', {});
+    assert.equal(gDenied.status, 403);
+    assert.equal(gDenied.json.code, 'GUEST_DISABLED');
   });
 
-  it('T5-2.3: blocks role:admin payload escalation, MAX_SAFE_INTEGER adjust-balance overflow, admin self-lock (BUG-4), and guest reset-password (BUG-5)', async () => {
+  it('T5-2.3: blocks role:admin payload escalation, MAX_SAFE_INTEGER adjust-balance overflow & admin self-lock (BUG-4)', async () => {
     const rbacSrv = await startTestServer({
       stripSecrets: true,
       env: { ADMIN_USERNAME: 't5_rbac_isolated_admin' },
@@ -405,29 +404,10 @@ describe('Tier 5 — T5-2: JWT Attacks, Session Revocation, Auth Edges & Admin R
       assert.equal(reg.json.user.role, 'user');
       assert.equal((await regEscal.get('/api/admin/users')).status, 403);
 
-      const guestEscal = createClient(rbacSrv.baseUrl);
-      const gReg = await guestEscal.post('/api/auth/guest', {});
-      assert.equal(gReg.status, 201);
-      const guestId = gReg.json.user.id;
-
-      // BUG-5: Guest reset-password rejected 400 NOT_REGISTERED
-      const guestReset = await isoAdmin.post(`/api/admin/users/${guestId}/reset-password`, {});
-      assert.equal(guestReset.status, 400);
-      assert.equal(guestReset.json.code, 'NOT_REGISTERED');
-
-      // Guest upgrade with role: 'admin' is forced to 'user'
-      const up = await guestEscal.post('/api/auth/upgrade', {
-        username: 't5_escal_up',
-        password: 'Password!123',
-        role: 'admin',
-      });
-      assert.equal(up.status, 200);
-      assert.equal(up.json.user.role, 'user');
-      assert.equal((await guestEscal.get('/api/admin/users')).status, 403);
-
       // BUG-3: MAX_SAFE_INTEGER positive overflow & negative overdraft rejected 400 without mutating balance
       const uid = reg.json.user.id;
-      const preBal = reg.json.user.balance;
+      await regEscal.post('/api/wallet/welcome-bonus', {});
+      const preBal = 2_000_000;
       const overRes = await isoAdmin.post(`/api/admin/users/${uid}/adjust-balance`, {
         amount: Number.MAX_SAFE_INTEGER,
         reason: 'Overflow probe',
@@ -466,9 +446,10 @@ describe('Tier 5 — T5-3: Concurrency Races, Idempotency & Live Round Settlemen
       const admin = createClient(server.baseUrl);
       await admin.post('/api/auth/register', { username: 't5_race_admin', password: 'AdminPass!123' });
 
-      // T5-3.1: 10x parallel 2M live bets on 10M balance -> 5x 200, 5x 400, balance === 0
+      // T5-3.1: 10x parallel 2M live bets on 10M admin-funded balance -> 5x 200, 5x 400, balance === 0
       const u1 = createClient(server.baseUrl);
-      await u1.post('/api/auth/register', { username: 't5_live_stampede', password: 'Password!123' });
+      const regU1 = await u1.post('/api/auth/register', { username: 't5_live_stampede', password: 'Password!123' });
+      await admin.post(`/api/admin/users/${regU1.json.user.id}/adjust-balance`, { amount: 10_000_000, reason: 'Stampede fund' });
       const stampede = await Promise.all(
         Array.from({ length: 10 }, () =>
           u1.post('/api/live/bet', { bets: { tai: 2_000_000 }, liveRoundId: roundId })
@@ -483,6 +464,7 @@ describe('Tier 5 — T5-3: Concurrency Races, Idempotency & Live Round Settlemen
       // T5-3.2a: 5x parallel identical Idempotency-Key on /api/live/bet
       const u2 = createClient(server.baseUrl);
       await u2.post('/api/auth/register', { username: 't5_live_idem', password: 'Password!123' });
+      await u2.post('/api/wallet/welcome-bonus', {});
       const idem5 = await Promise.all(
         Array.from({ length: 5 }, () =>
           u2.post(
@@ -495,7 +477,7 @@ describe('Tier 5 — T5-3: Concurrency Races, Idempotency & Live Round Settlemen
       for (const r of idem5) assert.equal(r.status, 200);
       assert.equal(idem5.filter((r) => r.json.replayed === false).length, 1);
       assert.equal(idem5.filter((r) => r.json.replayed === true).length, 4);
-      assert.equal((await u2.get('/api/auth/me')).json.user.balance, 9_000_000);
+      assert.equal((await u2.get('/api/auth/me')).json.user.balance, 1_000_000);
 
       // Same key + differing payload -> 409 IDEMPOTENCY_CONFLICT (both /api/live/bet and /api/roll)
       const liveConflict = await u2.post(
@@ -536,7 +518,7 @@ describe('Tier 5 — T5-3: Concurrency Races, Idempotency & Live Round Settlemen
     }
   });
 
-  it('T5-3.3 & T5-3.4: 8x parallel daily-bonus / bankruptcy-aid, 2x guest upgrade, and 2x parallel /api/auth/recover (BUG-1)', async () => {
+  it('T5-3.3 & T5-3.4: 8x parallel welcome-bonus race -> 1x 200 & 7x 409, retired endpoints 410, and 2x parallel /api/auth/recover (BUG-1)', async () => {
     const server = await startTestServer({
       stripSecrets: true,
       env: { ADMIN_USERNAME: 't5_bonus_admin' },
@@ -545,40 +527,19 @@ describe('Tier 5 — T5-3: Concurrency Races, Idempotency & Live Round Settlemen
       const admin = createClient(server.baseUrl);
       await admin.post('/api/auth/register', { username: 't5_bonus_admin', password: 'AdminPass!123' });
 
-      // 8x parallel daily-bonus -> 1x 200, 7x 429
+      // 8x parallel welcome-bonus -> 1x 200, 7x 409
       const bonusUser = createClient(server.baseUrl);
-      const regB = await bonusUser.post('/api/auth/register', { username: 't5_bonus_race', password: 'Password!123' });
+      await bonusUser.post('/api/auth/register', { username: 't5_bonus_race', password: 'Password!123' });
       const bRace = await Promise.all(
-        Array.from({ length: 8 }, () => bonusUser.post('/api/wallet/daily-bonus', {}))
+        Array.from({ length: 8 }, (_, idx) =>
+          bonusUser.post('/api/wallet/welcome-bonus', {}, { headers: { 'Idempotency-Key': `wb-race-${idx}` } })
+        )
       );
       assert.equal(bRace.filter((r) => r.status === 200).length, 1);
-      assert.equal(bRace.filter((r) => r.status === 429).length, 7);
-      assert.equal((await bonusUser.get('/api/auth/me')).json.user.balance, 12_000_000);
-
-      // 8x parallel bankruptcy-aid -> 1x 200, 7x 400/429
-      await admin.post(`/api/admin/users/${regB.json.user.id}/adjust-balance`, {
-        amount: -(12_000_000 - 5_000),
-        reason: 'Drain to 5000',
-      });
-      const aidRace = await Promise.all(
-        Array.from({ length: 8 }, () => bonusUser.post('/api/wallet/bankruptcy-aid', {}))
-      );
-      assert.equal(aidRace.filter((r) => r.status === 200).length, 1);
-      assert.equal(aidRace.filter((r) => r.status === 400 || r.status === 429).length, 7);
-      assert.equal((await bonusUser.get('/api/auth/me')).json.user.balance, 505_000);
-
-      // 2x parallel guest upgrade -> 1x 200, 1x 400, old guest cookie 401
-      const guest = createClient(server.baseUrl);
-      await guest.post('/api/auth/guest', {});
-      const oldGuestCookie = guest.snapshotCookie();
-      const upRace = await Promise.all([
-        guest.post('/api/auth/upgrade', { username: 't5_up_race_a', password: 'Password!123' }),
-        guest.post('/api/auth/upgrade', { username: 't5_up_race_b', password: 'Password!123' }),
-      ]);
-      assert.deepEqual(upRace.map((r) => r.status).sort((a, b) => a - b), [200, 400]);
-      const staleGuest = createClient(server.baseUrl);
-      staleGuest.setRawCookieHeader(oldGuestCookie);
-      assert.equal((await staleGuest.get('/api/auth/me')).status, 401);
+      assert.equal(bRace.filter((r) => r.status === 409).length, 7);
+      assert.equal((await bonusUser.get('/api/auth/me')).json.user.balance, 2_000_000);
+      assert.equal((await bonusUser.post('/api/wallet/daily-bonus', {})).status, 410);
+      assert.equal((await bonusUser.post('/api/wallet/bankruptcy-aid', {})).status, 410);
 
       // BUG-1: 2x parallel /api/auth/recover with same recoveryCode -> 1x 200, 1x 401
       const recUser = createClient(server.baseUrl);
@@ -616,6 +577,7 @@ describe('Tier 5 — T5-3: Concurrency Races, Idempotency & Live Round Settlemen
       const player = createClient(server.baseUrl);
       const regP = await player.post('/api/auth/register', { username: 't5_mixed_player', password: 'Password!123' });
       const pid = regP.json.user.id;
+      await player.post('/api/wallet/welcome-bonus', {});
       const bystander = createClient(server.baseUrl);
       await bystander.post('/api/auth/register', { username: 't5_bystander', password: 'Password!123' });
 
@@ -655,7 +617,6 @@ describe('Tier 5 — T5-3: Concurrency Races, Idempotency & Live Round Settlemen
       assert.equal(pastSettle.json.settledNow, true);
 
       // 3. T5-3.6 Mixed-sequence wallet_ledger invariant across all modes
-      await player.post('/api/wallet/daily-bonus', {});
       await player.post('/api/roll', { bets: { tai: 20_000, double_2: 5_000 } });
       await player.post('/api/roll', { bets: { tai: 10_000, xiu: 10_000 } }); // breakeven when non-triple
 
@@ -667,17 +628,17 @@ describe('Tier 5 — T5-3: Concurrency Races, Idempotency & Live Round Settlemen
 
       const curBal = (await player.get('/api/auth/me')).json.user.balance;
       await admin.post(`/api/admin/users/${pid}/adjust-balance`, {
-        amount: -(curBal - 5_000),
-        reason: 'Drain below 10k for mixed ledger test',
+        amount: 250_000,
+        reason: 'Admin topup for mixed ledger invariant test',
       });
-      await player.post('/api/wallet/bankruptcy-aid', {});
+      assert.ok(curBal >= 0);
       await player.post('/api/roll', { bets: { tai: 5_000, xiu: 5_000 } });
 
       const meFinal = await player.get('/api/auth/me');
       const ledger = meFinal.json.ledger;
       assert.ok(ledger.length >= 9 && ledger.length < 50);
       const chrono = ledger.slice().reverse();
-      let running = 10_000_000;
+      let running = 0;
       for (let i = 0; i < chrono.length; i++) {
         assert.equal(chrono[i].balanceBefore, running);
         assert.equal(chrono[i].balanceBefore + chrono[i].amount, chrono[i].balanceAfter);
@@ -699,6 +660,7 @@ describe('Tier 5 — T5-4: Fairness, clientSeed, VERCEL=1 & Frontend State/Secur
     try {
       const client = createClient(server.baseUrl);
       await client.post('/api/auth/register', { username: 't5_fair_edge', password: 'Password!123' });
+      await client.post('/api/wallet/welcome-bonus', {});
 
       // Whitespace-only falls back to active seed
       const wsRoll = await client.post('/api/roll', { bets: { tai: 1000 }, clientSeed: '    ' });
@@ -799,6 +761,7 @@ describe('Tier 5 — T5-4: Fairness, clientSeed, VERCEL=1 & Frontend State/Secur
         const reg = await c.post('/api/auth/register', { username: 't5_v_edge', password: 'Password!123' });
         assert.equal(reg.status, 201);
         assert.equal(c.getCookieMeta('sicbo_token')?.secure, true);
+        assert.equal((await c.post('/api/wallet/welcome-bonus', {})).status, 200);
         assert.equal((await c.post('/api/roll', { bets: { tai: 1000 } })).status, 200);
 
         const logs = `${vs.getLogs().stdout}\n${vs.getLogs().stderr}`;
@@ -834,7 +797,7 @@ describe('Tier 5 — T5-4: Fairness, clientSeed, VERCEL=1 & Frontend State/Secur
       assert.match(appJs, /await settleUnsettledPastLiveTickets\(data\.unsettledLiveTickets/);
       assert.match(appJs, /await settleUnsettledPastLiveTickets\(json\.unsettledTickets/);
 
-      // 2. Finding 2: Live-only startRoll delegates to submitLiveBet, and submitLiveBet must NOT call ensureGuestSessionIfNeeded on 401
+      // 2. Finding 2: Live-only startRoll delegates to submitLiveBet, and submitLiveBet requires login without creating guest sessions
       const startRollCode = extractBalancedJsFunction(appJs, 'startRoll');
       assert.ok(startRollCode);
       assert.match(startRollCode, /return await submitLiveBet\(totalWager\);/);
@@ -842,7 +805,8 @@ describe('Tier 5 — T5-4: Fairness, clientSeed, VERCEL=1 & Frontend State/Secur
 
       const submitLiveCode = extractBalancedJsFunction(appJs, 'submitLiveBet');
       assert.ok(submitLiveCode);
-      assert.match(submitLiveCode, /hadUserSession\s*\?\s*true\s*:\s*await ensureGuestSessionIfNeeded/);
+      assert.match(submitLiveCode, /requireAuthenticatedSession/);
+      assert.equal(/\/api\/auth\/guest/.test(appJs), false);
       assert.match(submitLiveCode, /if\s*\(res\.status\s*===\s*401\)\s*\{\s*openAuthModal\('authPaneLogin'\);\s*return false;\s*\}/);
 
       // 3. Finding 3: resetClientSessionState on login/register/logout/data.user===null + spectator fallback on 404 settle
@@ -861,7 +825,7 @@ describe('Tier 5 — T5-4: Fairness, clientSeed, VERCEL=1 & Frontend State/Secur
 
       // 5. Finding 5 & 6: in-flight guards, MAX_SINGLE_BET cap on btnDouble, Number.isSafeInteger adminAdjust, Object.hasOwn, setAuthFeedback class reset
       assert.match(appJs, /async function withInFlightGuard/);
-      for (const opKey of ['rotateClientSeed', 'dailyBonus', 'bankruptcyAid', 'authLogin', 'authGuest', 'authRegister', 'authUpgrade', 'authChangePassword', 'authRecover']) {
+      for (const opKey of ['rotateClientSeed', 'welcomeBonus', 'authLogin', 'authRegister', 'authUpgrade', 'authChangePassword', 'authRecover']) {
         assert.ok(appJs.includes(`'${opKey}'`), `Missing withInFlightGuard key ${opKey}`);
       }
       assert.match(appJs, /Object\.hasOwn\(BET_LABELS/);
@@ -1171,6 +1135,7 @@ describe('Tier 5 — T5-4: Fairness, clientSeed, VERCEL=1 & Frontend State/Secur
 
         // 8a. Double-click in-flight guards on Admin Ops + Seed Rotate + Daily Bonus + Bankruptcy Aid
         let stateBalance = 1500000000;
+        let welcomeClaimed8a = false;
         let activeDefer = null;
         const fixedBootTime = Math.floor(Date.now() / LIVE_ROUND_MS) * LIVE_ROUND_MS + 2000;
         fetchHandler = async (url) => {
@@ -1186,15 +1151,15 @@ describe('Tier 5 — T5-4: Fairness, clientSeed, VERCEL=1 & Frontend State/Secur
             });
           }
           if (url === '/api/auth/login') {
-            return jsonResp(200, { user: { id: 'adm_1', username: 'admin', displayName: 'Admin', role: 'admin', balance: stateBalance } });
+            return jsonResp(200, { user: { id: 'adm_1', username: 'admin', displayName: 'Admin', role: 'admin', balance: stateBalance, welcomeBonusClaimed: welcomeClaimed8a } });
           }
           if (url === '/api/state') {
             return jsonResp(200, {
               serverTime: fixedBootTime,
-              user: { id: 'adm_1', username: 'admin', displayName: 'Admin', role: 'admin', balance: stateBalance },
+              user: { id: 'adm_1', username: 'admin', displayName: 'Admin', role: 'admin', balance: stateBalance, welcomeBonusClaimed: welcomeClaimed8a },
               history: [{ id: 1001, dice: [4, 5, 6], total: 15, outcome: 'TAI', isTriple: false }],
               personalHistory: [{ roundId: 900, timestamp: new Date().toISOString(), dice: [1, 2, 3], total: 6, outcome: 'XIU', bets: { xiu: 10000 }, totalBet: 10000, netProfit: 10000 }],
-              ledger: [{ id: 'l1', type: 'daily_bonus', amount: 2000000, balanceBefore: 0, balanceAfter: 2000000, reason: 'bonus', timestamp: new Date().toISOString() }],
+              ledger: [{ id: 'l1', type: 'welcome_bonus', amount: 2000000, balanceBefore: 0, balanceAfter: 2000000, reason: 'bonus', timestamp: new Date().toISOString() }],
               fairness: { serverSeedHash: 'a'.repeat(64), clientSeed: 'seed-1', nonce: 1 },
               live: { liveRoundId: Math.floor(fixedBootTime / LIVE_ROUND_MS), roundSeedHash: 'a'.repeat(64), ticket: null },
               unsettledLiveTickets: [],
@@ -1280,47 +1245,45 @@ describe('Tier 5 — T5-4: Fairness, clientSeed, VERCEL=1 & Frontend State/Secur
         // Clean up unused initial resetBtn reference
         assert.ok(resetBtn);
 
-        // Double-click #btnRotateClientSeed & #btnDailyBonus
-        for (const [btnId, endpoint, respData] of [
-          ['btnRotateClientSeed', '/api/fairness/rotate', { current: { serverSeedHash: 'b'.repeat(64), clientSeed: 'new-seed', nonce: 0 } }],
-          ['btnDailyBonus', '/api/wallet/daily-bonus', { balance: 1502000000, bonusAmount: 2000000 }],
-        ]) {
-          fetchCalls.length = 0;
-          activeDefer = deferred();
-          getEl(btnId).click();
-          assert.equal(getEl(btnId).disabled, true);
-          getEl(btnId).click();
-          getEl(btnId).invokeClickBypassingDisabled();
-          await Promise.resolve();
-          await Promise.resolve();
-          assert.equal(fetchCalls.filter(c => c.url === endpoint).length, 1);
-          activeDefer.resolve(jsonResp(200, respData));
-          activeDefer = null;
-          await new Promise(r => setImmediate(r));
-          await new Promise(r => setImmediate(r));
-          assert.equal(getEl(btnId).disabled, false);
-        }
-
-        // Double-click #btnBankruptcyAid when balance < 10000 and verify disabled stays true afterward
-        stateBalance = 5000;
-        getEl('loginUsername').value = 'poor';
-        getEl('loginPassword').value = 'Pass!123';
-        await Promise.all(getEl('btnLoginSubmit').click());
-        assert.equal(getEl('btnBankruptcyAid').disabled, false);
+        // Double-click #btnRotateClientSeed
         fetchCalls.length = 0;
         activeDefer = deferred();
-        getEl('btnBankruptcyAid').click();
-        assert.equal(getEl('btnBankruptcyAid').disabled, true);
-        getEl('btnBankruptcyAid').invokeClickBypassingDisabled();
+        getEl('btnRotateClientSeed').click();
+        assert.equal(getEl('btnRotateClientSeed').disabled, true);
+        getEl('btnRotateClientSeed').click();
+        getEl('btnRotateClientSeed').invokeClickBypassingDisabled();
         await Promise.resolve();
         await Promise.resolve();
-        assert.equal(fetchCalls.filter(c => c.url === '/api/wallet/bankruptcy-aid').length, 1);
-        stateBalance = 505000;
-        activeDefer.resolve(jsonResp(200, { balance: 505000, aidAmount: 500000 }));
+        assert.equal(fetchCalls.filter(c => c.url === '/api/fairness/rotate').length, 1);
+        activeDefer.resolve(jsonResp(200, { current: { serverSeedHash: 'b'.repeat(64), clientSeed: 'new-seed', nonce: 0 } }));
         activeDefer = null;
         await new Promise(r => setImmediate(r));
         await new Promise(r => setImmediate(r));
-        assert.equal(getEl('btnBankruptcyAid').disabled, true);
+        assert.equal(getEl('btnRotateClientSeed').disabled, false);
+
+        // Double-click #btnWelcomeBonus: visible & enabled before claim, disabled/hidden forever after 1 claim
+        assert.equal(getEl('btnWelcomeBonus').classList.contains('hidden'), false);
+        assert.equal(getEl('btnWelcomeBonus').disabled, false);
+        fetchCalls.length = 0;
+        activeDefer = deferred();
+        getEl('btnWelcomeBonus').click();
+        assert.equal(getEl('btnWelcomeBonus').disabled, true);
+        getEl('btnWelcomeBonus').invokeClickBypassingDisabled();
+        await Promise.resolve();
+        await Promise.resolve();
+        assert.equal(fetchCalls.filter(c => c.url === '/api/wallet/welcome-bonus').length, 1);
+        stateBalance = 1502000000;
+        welcomeClaimed8a = true;
+        activeDefer.resolve(jsonResp(200, {
+          balance: 1502000000,
+          bonusAmount: 2000000,
+          user: { id: 'adm_1', username: 'admin', role: 'admin', balance: 1502000000, welcomeBonusClaimed: true }
+        }));
+        activeDefer = null;
+        await new Promise(r => setImmediate(r));
+        await new Promise(r => setImmediate(r));
+        assert.equal(getEl('btnWelcomeBonus').disabled, true);
+        assert.equal(getEl('btnWelcomeBonus').classList.contains('hidden'), true);
 
         // 8b. placeOrRemoveChip MAX_SINGLE_BET + btnDouble MAX_SINGLE_BET + btnUndo/btnRemoveMode/btnRebet
         stateBalance = 1500000000;
@@ -1414,10 +1377,14 @@ describe('Tier 5 — T5-4: Fairness, clientSeed, VERCEL=1 & Frontend State/Secur
         assert.equal(getEl('userBalance').textContent, (1495000000).toLocaleString('vi-VN'));
         assert.equal(spotTai.querySelector('.wager-chip-counter').textContent, '');
         assert.match(getEl('liveTicketBadge').textContent, /5\.000\.000|5,000,000/);
+        assert.equal(spotTai.classList.contains('has-committed'), true);
+        const committedBadge = spotTai.querySelector('.committed-bet-badge');
+        assert.ok(committedBadge && committedBadge.classList.contains('active'));
+        assert.match(committedBadge.textContent, /5\.000\.000|5,000,000/);
 
-        // Rebet restores lastBets (5M on tai)
+        // Rebet restores lastBets (5M draft on top of 5M committed -> +5.000.000)
         getEl('btnRebet').click();
-        assert.equal(spotTai.querySelector('.wager-chip-counter').textContent, (5000000).toLocaleString('vi-VN'));
+        assert.equal(spotTai.querySelector('.wager-chip-counter').textContent, `+${(5000000).toLocaleString('vi-VN')}`);
         getEl('btnClear').click();
 
         // Advance mock clock to REVEAL and verify winnings are credited only after bowl opens
@@ -1527,13 +1494,20 @@ describe('Tier 5 — T5-4: Fairness, clientSeed, VERCEL=1 & Frontend State/Secur
         fetchCalls.length = 0;
         await Promise.all(getEl('btnAdminSearch').click());
         assert.equal(getEl('adminModal').classList.contains('open'), false);
-        assert.equal(getEl('userBalance').textContent, (10000000).toLocaleString('vi-VN'));
+        assert.equal(getEl('userBalance').textContent, '0');
         assert.equal(getEl('navUserBadge').textContent, 'Đăng nhập');
         assert.match(getEl('personalLedgerBody').innerHTML, /empty-ledger-cell/);
         assert.match(getEl('walletLedgerBody').innerHTML, /empty-ledger-cell/);
         assert.equal(fetchCalls.filter(c => c.url === '/api/auth/guest').length, 0);
 
-        // 8d-2: Live-only #btnRoll 401 with wager <= 2,000,000 (10,000 chip) submits /api/live/bet, must NOT call /api/auth/guest, opens authPaneLogin, preserves bets
+        // Unauthenticated clicking bet-spot must block fake chip placement and open authPaneLogin
+        getEl('btnCloseAuth').click();
+        spotTai.click();
+        assert.equal(spotTai.querySelector('.wager-chip-counter').textContent, '');
+        assert.equal(getEl('authModal').classList.contains('open'), true);
+        assert.equal(getEl('authPaneLogin').classList.contains('active'), true);
+
+        // 8d-2: Live-only #btnRoll 401 with wager <= 2,000,000 (10,000 chip) submits /api/live/bet, must NOT call /api/auth/guest, resets balance to 0, opens authPaneLogin, preserves draft bets
         adminUsersReturn401 = false;
         getEl('loginUsername').value = 'adm2';
         getEl('loginPassword').value = 'Pass!123';
@@ -1557,7 +1531,7 @@ describe('Tier 5 — T5-4: Fairness, clientSeed, VERCEL=1 & Frontend State/Secur
         assert.equal(getEl('authModal').classList.contains('open'), true);
         assert.equal(getEl('authPaneLogin').classList.contains('active'), true);
         assert.equal(spotXiu.querySelector('.wager-chip-counter').textContent, (10000).toLocaleString('vi-VN'));
-        assert.equal(getEl('userBalance').textContent, (10000000).toLocaleString('vi-VN'));
+        assert.equal(getEl('userBalance').textContent, '0');
         assert.equal(getEl('navUserBadge').textContent, 'Đăng nhập');
         assert.match(getEl('personalLedgerBody').innerHTML, /empty-ledger-cell/);
         assert.match(getEl('walletLedgerBody').innerHTML, /empty-ledger-cell/);
@@ -1611,7 +1585,7 @@ describe('Tier 5 — T5-4: Fairness, clientSeed, VERCEL=1 & Frontend State/Secur
         spotTai.click();
         assert.equal(spotTai.querySelector('.wager-chip-counter').textContent, (5000000).toLocaleString('vi-VN'));
         await Promise.all(getEl('btnLogout').click());
-        assert.equal(getEl('userBalance').textContent, (10000000).toLocaleString('vi-VN'));
+        assert.equal(getEl('userBalance').textContent, '0');
         assert.equal(spotTai.querySelector('.wager-chip-counter').textContent, '');
         assert.equal(getEl('navUserBadge').textContent, 'Đăng nhập');
         assert.match(getEl('personalLedgerBody').innerHTML, /empty-ledger-cell/);

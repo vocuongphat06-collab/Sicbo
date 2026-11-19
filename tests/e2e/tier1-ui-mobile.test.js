@@ -134,17 +134,18 @@ describe('Tier 1 — F8, F9, F10: Frontend Assets, UI Overhaul, Chips, Mobile & 
       assert.match(html, /1\s*:\s*30/);
     });
 
-    it('F8.3: Auth, Admin, Leaderboard, Wallet Ledger, Daily Bonus & Bankruptcy Aid UI elements exist', () => {
+    it('F8.3: Auth, Admin, Leaderboard, Wallet Ledger, 1-Time Welcome Bonus & 0 ₫ unauthenticated default exist', () => {
       const requiredIds = [
         'btnAuthModal',
         'authModal',
         'btnOpenAdmin',
         'adminModal',
+        'adminStorageWarning',
         'btnOpenLeaderboard',
         'leaderboardModal',
         'tabWalletLedger',
-        'btnDailyBonus',
-        'btnBankruptcyAid',
+        'btnWelcomeBonus',
+        'userBalance',
       ];
       for (const id of requiredIds) {
         assert.ok(
@@ -152,6 +153,10 @@ describe('Tier 1 — F8, F9, F10: Frontend Assets, UI Overhaul, Chips, Mobile & 
           `Required UI element #${id} must exist in index.html`
         );
       }
+      assert.equal(extractElementAndAncestors(html, 'btnDailyBonus'), null, 'Obsolete daily bonus button must be removed');
+      assert.equal(extractElementAndAncestors(html, 'btnBankruptcyAid'), null, 'Obsolete bankruptcy aid button must be removed');
+      assert.equal(extractElementAndAncestors(html, 'btnPlayAsGuest'), null, 'Obsolete guest login button must be removed');
+      assert.match(html, /<span id="userBalance">0<\/span>/);
     });
 
     it('F8.4: fullMatrixModal z-index stacking does not block chips, action controls, wager summary, or btnRoll', () => {
@@ -337,67 +342,39 @@ describe('Tier 1 — F8, F9, F10: Frontend Assets, UI Overhaul, Chips, Mobile & 
   // F10: Mobile < 980px, 3D Touch, localStorage & document.hidden Pause (6 tests)
   // ---------------------------------------------------------------------------
   describe('F10: Mobile < 980px, 3D Touch, localStorage & WebGL Pause', () => {
-    it('F10.1: @media (max-width: 980px) keeps #chkSqueeze ("Nặn Bát 3D") visible on mobile', () => {
-      const squeezeInfo = extractElementAndAncestors(html, 'chkSqueeze');
-      assert.ok(squeezeInfo, '#chkSqueeze must exist in index.html');
+    it('F10.1: @media (max-width: 980px) keeps critical Live controls visible, removes unused #chkSqueeze, and frames 3D stage cleanly', () => {
+      assert.equal(extractElementAndAncestors(html, 'chkSqueeze'), null, 'Unused #chkSqueeze must be removed in Live-only 45s mode');
 
       const mobileRules = cssRules.filter((r) => r.media && /max-width\s*:\s*980px/.test(r.media));
       assert.ok(mobileRules.length > 0, 'style.css must define @media (max-width: 980px) rules');
 
-      // Check none of chkSqueeze's ancestors are hidden via display:none, visibility:hidden, or opacity:0 in max-width:980px
-      const chain = [...squeezeInfo.ancestors, squeezeInfo.element];
-      for (const node of chain) {
-        let mobileDisplay = null;
-        let mobileDisplayImportant = false;
-        let mobileVisibility = null;
-        let mobileVisibilityImportant = false;
-        let mobileOpacity = null;
-        let mobileOpacityImportant = false;
-
-        for (const r of mobileRules) {
-          const hit = r.selectors.some((sel) => selectorMatchesNode(sel, node));
-          if (!hit) continue;
-          if (r.props.has('display')) {
-            const raw = r.props.get('display');
-            const isImp = /!important/i.test(raw);
-            if (isImp || !mobileDisplayImportant) {
-              mobileDisplay = stripCssImportant(raw).toLowerCase();
-              if (isImp) mobileDisplayImportant = true;
-            }
+      for (const criticalId of ['btnModeLive', 'userBalance', 'btnAuthModal', 'btnRoll', 'chipsSelector']) {
+        const info = extractElementAndAncestors(html, criticalId);
+        assert.ok(info, `#${criticalId} must exist in index.html`);
+        const chain = [...info.ancestors, info.element];
+        for (const node of chain) {
+          let mobileDisplay = null;
+          let mobileVisibility = null;
+          let mobileOpacity = null;
+          for (const r of mobileRules) {
+            const hit = r.selectors.some((sel) => selectorMatchesNode(sel, node));
+            if (!hit) continue;
+            if (r.props.has('display')) mobileDisplay = stripCssImportant(r.props.get('display')).toLowerCase();
+            if (r.props.has('visibility')) mobileVisibility = stripCssImportant(r.props.get('visibility')).toLowerCase();
+            if (r.props.has('opacity')) mobileOpacity = stripCssImportant(r.props.get('opacity')).toLowerCase();
           }
-          if (r.props.has('visibility')) {
-            const raw = r.props.get('visibility');
-            const isImp = /!important/i.test(raw);
-            if (isImp || !mobileVisibilityImportant) {
-              mobileVisibility = stripCssImportant(raw).toLowerCase();
-              if (isImp) mobileVisibilityImportant = true;
-            }
-          }
-          if (r.props.has('opacity')) {
-            const raw = r.props.get('opacity');
-            const isImp = /!important/i.test(raw);
-            if (isImp || !mobileOpacityImportant) {
-              mobileOpacity = stripCssImportant(raw).toLowerCase();
-              if (isImp) mobileOpacityImportant = true;
-            }
-          }
+          assert.notEqual(mobileDisplay, 'none', `#${criticalId} ancestor chain must not hide on <=980px`);
+          assert.notEqual(mobileVisibility, 'hidden', `#${criticalId} ancestor chain must not be hidden on <=980px`);
+          assert.notEqual(mobileOpacity, '0', `#${criticalId} ancestor chain must not be opacity:0 on <=980px`);
         }
-        assert.notEqual(
-          mobileDisplay,
-          'none',
-          `Ancestor <${node.tag} id="${node.id}" class="${node.classes.join(' ')}"> of #chkSqueeze must NOT have display:none under @media (max-width: 980px)`
-        );
-        assert.notEqual(
-          mobileVisibility,
-          'hidden',
-          `Ancestor <${node.tag} id="${node.id}" class="${node.classes.join(' ')}"> of #chkSqueeze must NOT have visibility:hidden under @media (max-width: 980px)`
-        );
-        assert.notEqual(
-          mobileOpacity,
-          '0',
-          `Ancestor <${node.tag} id="${node.id}" class="${node.classes.join(' ')}"> of #chkSqueeze must NOT have opacity:0 under @media (max-width: 980px)`
-        );
       }
+
+      assert.match(threeEngineJs, /computeCameraFraming/);
+      assert.match(threeEngineJs, /isAnimatingBowl/);
+      assert.match(threeEngineJs, /getClosestQuaternionForFace/);
+      assert.match(appJs, /lastRenderedDiceRoundId/);
+      assert.match(appJs, /visibilitychange/);
+      assert.match(appJs, /pointerdown/);
     });
 
     it('F10.2: three-engine.js uses touchmove { passive: false } and calls preventDefault() while dragging bowl', () => {
@@ -438,8 +415,8 @@ describe('Tier 1 — F8, F9, F10: Frontend Assets, UI Overhaul, Chips, Mobile & 
           const errors = [];
           page.on('pageerror', (e) => errors.push(e.message));
           await page.goto(server.baseUrl, { waitUntil: 'domcontentloaded' });
-          const squeezeVisible = await page.locator('#chkSqueeze').isVisible();
-          assert.equal(squeezeVisible, true);
+          const rollVisible = await page.locator('#btnRoll').isVisible();
+          assert.equal(rollVisible, true);
           assert.deepEqual(errors, []);
         } finally {
           await browser.close();

@@ -65,6 +65,8 @@ describe('Tier 2 — Security, HTTP, Config & Wager Boundaries (T2-Sec)', () => 
       password: 'Password!123',
     });
     assert.equal(reg.status, 201);
+    const wb = await userClient.post('/api/wallet/welcome-bonus', {});
+    assert.equal(wb.status, 200);
   });
 
   after(async () => {
@@ -394,48 +396,51 @@ describe('Tier 2 — Security, HTTP, Config & Wager Boundaries (T2-Sec)', () => 
       assert.match(appJs, /btnUndo/);
     });
 
-    it('T2-F10.1: @media (max-width: 980px) never hides #chkSqueeze or its ancestor chain', () => {
-      const info = extractElementAndAncestors(html, 'chkSqueeze');
-      assert.ok(info);
+    it('T2-F10.1: @media (max-width: 980px) never hides #chipsSelector/#btnRoll/#userBalance and removes #chkSqueeze', () => {
+      assert.equal(extractElementAndAncestors(html, 'chkSqueeze'), null);
       const mobileRules = cssRules.filter((r) => r.media && /980px/.test(r.media));
       assert.ok(mobileRules.length > 0);
-      for (const node of [...info.ancestors, info.element]) {
-        let disp = null;
-        let dispImp = false;
-        let vis = null;
-        let visImp = false;
-        let opa = null;
-        let opaImp = false;
-        for (const r of mobileRules) {
-          if (!r.selectors.some((s) => selectorMatchesNode(s, node))) continue;
-          if (r.props.has('display')) {
-            const raw = r.props.get('display');
-            const isImp = /!important/i.test(raw);
-            if (isImp || !dispImp) {
-              disp = stripCssImportant(raw).toLowerCase();
-              if (isImp) dispImp = true;
+      for (const id of ['btnRoll', 'chipsSelector', 'userBalance', 'btnModeLive']) {
+        const info = extractElementAndAncestors(html, id);
+        assert.ok(info);
+        for (const node of [...info.ancestors, info.element]) {
+          let disp = null;
+          let dispImp = false;
+          let vis = null;
+          let visImp = false;
+          let opa = null;
+          let opaImp = false;
+          for (const r of mobileRules) {
+            if (!r.selectors.some((s) => selectorMatchesNode(s, node))) continue;
+            if (r.props.has('display')) {
+              const raw = r.props.get('display');
+              const isImp = /!important/i.test(raw);
+              if (isImp || !dispImp) {
+                disp = stripCssImportant(raw).toLowerCase();
+                if (isImp) dispImp = true;
+              }
+            }
+            if (r.props.has('visibility')) {
+              const raw = r.props.get('visibility');
+              const isImp = /!important/i.test(raw);
+              if (isImp || !visImp) {
+                vis = stripCssImportant(raw).toLowerCase();
+                if (isImp) visImp = true;
+              }
+            }
+            if (r.props.has('opacity')) {
+              const raw = r.props.get('opacity');
+              const isImp = /!important/i.test(raw);
+              if (isImp || !opaImp) {
+                opa = stripCssImportant(raw).toLowerCase();
+                if (isImp) opaImp = true;
+              }
             }
           }
-          if (r.props.has('visibility')) {
-            const raw = r.props.get('visibility');
-            const isImp = /!important/i.test(raw);
-            if (isImp || !visImp) {
-              vis = stripCssImportant(raw).toLowerCase();
-              if (isImp) visImp = true;
-            }
-          }
-          if (r.props.has('opacity')) {
-            const raw = r.props.get('opacity');
-            const isImp = /!important/i.test(raw);
-            if (isImp || !opaImp) {
-              opa = stripCssImportant(raw).toLowerCase();
-              if (isImp) opaImp = true;
-            }
-          }
+          assert.notEqual(disp, 'none');
+          assert.notEqual(vis, 'hidden');
+          assert.notEqual(opa, '0');
         }
-        assert.notEqual(disp, 'none');
-        assert.notEqual(vis, 'hidden');
-        assert.notEqual(opa, '0');
       }
     });
 
@@ -480,6 +485,8 @@ describe('Tier 2 — F3: Provably Fair & Live Clock Boundaries (T2-LiveClock)', 
       password: 'Password!123',
     });
     assert.equal(reg.status, 201);
+    const wb = await client.post('/api/wallet/welcome-bonus', {});
+    assert.equal(wb.status, 200);
   });
 
   after(async () => {
@@ -664,52 +671,43 @@ describe('Tier 2 — F4 & F6: Bankruptcy, Admin Adjust & RBAC Boundaries (T2-Wal
       password: 'Password!123',
     });
     assert.equal(regB.status, 201);
+    assert.equal(regB.json.user.balance, 0);
+    await userB.post('/api/wallet/welcome-bonus', {});
 
     guestClient = createClient(server.baseUrl);
     const regG = await guestClient.post('/api/auth/guest', {});
-    assert.equal(regG.status, 201);
+    assert.equal(regG.status, 403);
+    assert.equal(regG.json.code, 'GUEST_DISABLED');
   });
 
   after(async () => {
     if (server) await server.close();
   });
 
-  it('T2-F6.1: bankruptcy aid at exact balance 10,000 is rejected (400)', async () => {
-    const me = await userA.get('/api/auth/me');
-    const delta = 10_000 - me.json.user.balance;
-    const adj = await adminClient.post(`/api/admin/users/${userAId}/adjust-balance`, {
-      amount: delta,
-      reason: 'Set exact 10,000 boundary',
-    });
-    assert.equal(adj.status, 200);
-    assert.equal(adj.json.user.balance, 10_000);
-
-    const aid = await userA.post('/api/wallet/bankruptcy-aid', {});
-    assert.equal(aid.status, 400);
-    assert.equal((await userA.get('/api/auth/me')).json.user.balance, 10_000);
+  it('T2-F6.1: welcome-bonus succeeds once (+2M) and rejects repeat with 409 WELCOME_BONUS_ALREADY_CLAIMED', async () => {
+    const wb1 = await userA.post('/api/wallet/welcome-bonus', {});
+    assert.equal(wb1.status, 200);
+    assert.equal(wb1.json.bonusAmount, 2_000_000);
+    assert.equal(wb1.json.balance, 2_000_000);
+    const wb2 = await userA.post('/api/wallet/welcome-bonus', {});
+    assert.equal(wb2.status, 409);
+    assert.equal(wb2.json.code, 'WELCOME_BONUS_ALREADY_CLAIMED');
   });
 
-  it('T2-F6.2: bankruptcy aid at exact balance 9,999 succeeds (+500,000 -> 509,999)', async () => {
-    const adj = await adminClient.post(`/api/admin/users/${userAId}/adjust-balance`, {
-      amount: -1,
-      reason: 'Set exact 9,999 boundary',
-    });
-    assert.equal(adj.status, 200);
-    assert.equal(adj.json.user.balance, 9_999);
-
+  it('T2-F6.2: retired bankruptcy-aid & daily-bonus return 410 without altering balance', async () => {
+    const beforeBal = (await userA.get('/api/auth/me')).json.user.balance;
     const aid = await userA.post('/api/wallet/bankruptcy-aid', {});
-    assert.equal(aid.status, 200);
-    assert.equal(aid.json.aidAmount, 500_000);
-    assert.equal(aid.json.balance, 509_999);
+    const daily = await userA.post('/api/wallet/daily-bonus', {});
+    assert.equal(aid.status, 410);
+    assert.equal(daily.status, 410);
+    assert.equal((await userA.get('/api/auth/me')).json.user.balance, beforeBal);
   });
 
-  it('T2-F6.3: bankruptcy aid cooldown rejects second claim even after balance drained to 0', async () => {
+  it('T2-F6.3: admin adjust-balance credits and drains accurately down to 0 boundary', async () => {
     await adminClient.post(`/api/admin/users/${userAId}/adjust-balance`, {
-      amount: -509_999,
-      reason: 'Drain to 0 for cooldown check',
+      amount: -2_000_000,
+      reason: 'Drain to 0 boundary check',
     });
-    const aid2 = await userA.post('/api/wallet/bankruptcy-aid', {});
-    assert.ok([400, 429].includes(aid2.status));
     assert.equal((await userA.get('/api/auth/me')).json.user.balance, 0);
   });
 
@@ -720,9 +718,9 @@ describe('Tier 2 — F4 & F6: Bankruptcy, Admin Adjust & RBAC Boundaries (T2-Wal
     assert.equal((await userB.post(`/api/admin/users/${userAId}/reset-password`, {})).status, 403);
   });
 
-  it('T2-F6.5: guest receives 403 and unauthenticated receives 401 on all /api/admin/* endpoints', async () => {
+  it('T2-F6.5: unauthenticated & non-admin receive 401/403 on all /api/admin/* endpoints', async () => {
     const anon = createClient(server.baseUrl);
-    for (const [roleClient, expected] of [[guestClient, 403], [anon, 401]]) {
+    for (const [roleClient, expected] of [[userB, 403], [anon, 401]]) {
       assert.equal((await roleClient.get('/api/admin/users')).status, expected);
       assert.equal((await roleClient.post(`/api/admin/users/${userAId}/adjust-balance`, { amount: 100, reason: 'x' })).status, expected);
       assert.equal((await roleClient.post(`/api/admin/users/${userAId}/toggle-lock`, { locked: true })).status, expected);
@@ -797,7 +795,7 @@ describe('Tier 2 — F4 & F6: Bankruptcy, Admin Adjust & RBAC Boundaries (T2-Wal
       assert.equal(Math.abs(entry.amount), Math.abs(delta));
       totalSignedDelta += delta;
     }
-    assert.equal(10_000_000 + totalSignedDelta, me.json.user.balance);
+    assert.equal(0 + totalSignedDelta, me.json.user.balance);
   });
 });
 
@@ -839,6 +837,7 @@ describe('Tier 2 — F5: Dedicated Rate-Limit 429 Isolation', () => {
         password: 'Password!123',
       });
       assert.equal(reg.status, 201);
+      await client.post('/api/wallet/welcome-bonus', {});
 
       let saw200 = false;
       let saw429 = false;
