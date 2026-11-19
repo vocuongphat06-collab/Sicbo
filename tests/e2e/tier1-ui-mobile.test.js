@@ -124,7 +124,8 @@ describe('Tier 1 — F8, F9, F10: Frontend Assets, UI Overhaul, Chips, Mobile & 
       assert.match(html, /id=["']btnModeLive["']/);
       assert.match(html, /LIVE 45S/);
       assert.match(appJs, /LIVE_ROUND_MS\s*=\s*45000/);
-      assert.match(appJs, /LIVE_BET_MS\s*=\s*40000/);
+      assert.match(appJs, /LIVE_BET_MS\s*=\s*37000/);
+      assert.match(appJs, /LIVE_REVEAL_MS\s*=\s*8000/);
 
       assert.match(html, /id=["']btnOpenRules["']/);
       assert.match(html, /id=["']rulesModal["']/);
@@ -514,6 +515,17 @@ describe('Tier 1 — F8, F9, F10: Frontend Assets, UI Overhaul, Chips, Mobile & 
           await browser.close();
         }
       }
+    });
+    it('F10.7: Live reveal prevents double-shake when unauthenticated, includes roll watchdog, and serves no-cache headers', async () => {
+      assert.match(appJs, /preserveLiveReveal:\s*true/, 'fetchServerState(user===null) must preserve liveRevealedRoundId');
+      assert.match(appJs, /armRollWatchdog\s*\(/, 'app.js must arm a watchdog to prevent stuck isRolling state');
+      assert.match(threeEngineJs, /forceFinishRoll\s*\(/, 'three-engine.js must expose forceFinishRoll recovery');
+      assert.match(html, /three-engine\.js\?v=/, 'index.html must include cache-busting query on three-engine.js');
+      assert.match(html, /app\.js\?v=/, 'index.html must include cache-busting query on app.js');
+
+      const res = await fetch(`${server.baseUrl}/three-engine.js`);
+      assert.equal(res.status, 200);
+      assert.match(res.headers.get('cache-control') || '', /no-cache/i, 'Static JS must send Cache-Control: no-cache');
     });
   });
 });

@@ -16,8 +16,8 @@ function getTargetRoot() {
 }
 
 const LIVE_ROUND_MS = 45000;
-const LIVE_BET_MS = 40000;
-const LIVE_REVEAL_MS = 5000;
+const LIVE_BET_MS = 37000;
+const LIVE_REVEAL_MS = 8000;
 
 const TOTAL_MULTIPLIERS = Object.freeze({
   4: 60,

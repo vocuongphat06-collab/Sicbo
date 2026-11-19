@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@200;300;400;500;600&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,400;1,600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20261119">
 
   <!-- 3D & Motion Dependencies -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -50,10 +50,10 @@
     <button id="btnQuickTopRoll" class="pill-circle-icon" data-dock title="Về Sân Khấu 3D &amp; Đồng Bộ Live">🎲</button>
 
     <!-- Single Synchronized 45s Live Room Pill -->
-    <button id="btnModeLive" class="pill-mode-btn live-only-pill active" data-dock title="Phòng Live Đồng Bộ 45 giây/phiên (40s nhận cược • 5s mở bát)">
+    <button id="btnModeLive" class="pill-mode-btn live-only-pill active" data-dock title="Phòng Live Đồng Bộ 45 giây/phiên (37s nhận cược • 8s mở bát)">
       <span class="live-pulse-beacon"></span>
       <span>⚡ LIVE 45S</span>
-      <span id="liveTimerBadge" class="live-timer-badge">40s</span>
+      <span id="liveTimerBadge" class="live-timer-badge">37s</span>
     </button>
 
     <button id="btnOpenDrawer" class="pill-tab" data-dock>⛬ BÀN CƯỢC 180X</button>
@@ -92,9 +92,19 @@
   <!-- Center-Stage Deterministic Live 45s Floating HUD Banner -->
   <div id="centerLiveBanner" class="center-live-banner active">
     <span class="live-pulse-beacon"></span>
-    <span id="centerLiveText" class="center-live-text">PHÒNG LIVE 45S • PHIÊN #<strong id="centerLiveRoundId">-</strong> • <strong id="centerLiveSec">40s</strong></span>
+    <span id="centerLiveText" class="center-live-text">PHÒNG LIVE 45S • PHIÊN #<strong id="centerLiveRoundId">-</strong> • <strong id="centerLiveSec">37s</strong></span>
     <span id="liveTicketBadge" class="live-ticket-badge hidden"></span>
     <span id="centerLivePhaseBadge" class="live-phase-badge">NHẬN CƯỢC</span>
+  </div>
+
+  <!-- X/Z Horizontal Squeeze Bowl Interactive Notification (Centered Over 3D Stage) -->
+  <div id="squeezePrompt" class="squeeze-glass-toast">
+    <div class="squeeze-pulse-ring">🖐</div>
+    <div class="squeeze-copy">
+      <strong>NẶN BÁT 3D • TRƯỢT NGANG X/Z <em id="squeezePctLabel">0%</em></strong>
+      <span>Nhấp giữ &amp; kéo trượt bát sang ngang để hé mở khe sáng từng góc xúc xắc</span>
+    </div>
+    <button id="btnQuickOpen" class="btn-toast-action">Mở Ngay (Space)</button>
   </div>
 
   <!-- ==================== 2. LEFT LIQUID-METAL CTA & MAIN BETTING ==================== -->
@@ -107,7 +117,7 @@
           <canvas class="liquid-fx" aria-hidden="true"></canvas>
           <button id="btnRoll" class="liquid-button">
             <span class="live-emerald-dot"></span>
-            <span id="btnRollLabel" class="btn-roll-label">Đặt Cược Live (40s)</span>
+            <span id="btnRollLabel" class="btn-roll-label">Đặt Cược Live (37s)</span>
             <span id="currentWagerSummary" class="wager-tag">0 ₫</span>
           </button>
         </div>
@@ -124,16 +134,6 @@
           <div id="liveProgressFill" class="live-progress-fill"></div>
         </div>
       </div>
-    </div>
-
-    <!-- X/Z Horizontal Squeeze Bowl Interactive Notification -->
-    <div id="squeezePrompt" class="squeeze-glass-toast">
-      <div class="squeeze-pulse-ring">🖐</div>
-      <div class="squeeze-copy">
-        <strong>NẶN BÁT 3D • TRƯỢT NGANG X/Z <em id="squeezePctLabel">0%</em></strong>
-        <span>Nhấp giữ &amp; kéo trượt bát sang ngang để hé mở khe sáng từng góc xúc xắc</span>
-      </div>
-      <button id="btnQuickOpen" class="btn-toast-action">Mở Ngay (Space)</button>
     </div>
 
     <!-- Sculptural Main Betting Gates (TÀI / XỈU / BÃO / CHẴN / LẺ) -->
@@ -217,7 +217,7 @@
       <span class="crosshair-icon">⊗</span>
       <div class="telemetry-text">
         <span class="tel-label">Provably Fair SHA-256 • Verified</span>
-        <strong class="tel-val" id="roundCounterLabel">MACAU VIP • #1032</strong>
+        <strong class="tel-val" id="roundCounterLabel">MACAU LIVE • #---</strong>
       </div>
     </button>
 
@@ -534,7 +534,7 @@
           <div class="fair-box">
             <span class="drawer-label">1. CAM KẾT PHIÊN LIVE 45S ĐỒNG BỘ (PRE-COMMIT SHA-256)</span>
             <p class="fair-desc">
-              Mỗi phiên <strong>Phòng Live 45s</strong> đều khóa trước mã băm cam kết <code>roundSeedHash</code> (SHA-256) trên Server ngay trong pha đặt cược 40s trước khi mở bát ở giây 40–45:
+              Mỗi phiên <strong>Phòng Live 45s</strong> đều khóa trước mã băm cam kết <code>roundSeedHash</code> (SHA-256) trên Server ngay trong pha đặt cược 37s trước khi mở bát ở giây 37–45:
             </p>
             <div class="fair-field">
               <label>Cam kết SHA-256 của Phiên Live hiện tại (roundSeedHash)</label>
@@ -872,7 +872,7 @@
             <li><strong>Chứng minh công bằng:</strong> Sử dụng <code>HMAC-SHA256(serverSeed, clientSeed:nonce)</code> kết hợp rejection sampling <code>byte &lt; 252</code> đảm bảo xác suất đều tuyệt đối 1/6.</li>
             <li><strong>Đổi Client Seed:</strong> Nhấn <code>Đổi Client Seed</code> để mở khóa <code>Server Seed</code> cũ và kiểm chứng toàn bộ lịch sử.</li>
             <li><strong>Thao tác phỉnh:</strong> Nhấn để đặt, <code>Chuột phải</code> hoặc bật <code>− Gỡ cửa</code> để trừ từng cửa, <code>↩ Hoàn tác</code> để quay lại bước trước.</li>
-            <li><strong>Phòng Live Đồng Bộ 45s:</strong> Chu kỳ cố định <code>45 giây</code> mỗi ván (<code>40s</code> nhận cược + <code>5s</code> khóa sổ &amp; tự mở bát); mọi người chơi cùng xem chung kết quả &amp; bảng cầu thời gian thực.</li>
+            <li><strong>Phòng Live Đồng Bộ 45s:</strong> Chu kỳ cố định <code>45 giây</code> mỗi ván (<code>37s</code> nhận cược + <code>8s</code> khóa sổ &amp; mở bát); hỗ trợ cả 2 chế độ Tự động mở bát và Tự kéo bát 3D.</li>
           </ul>
         </div>
       </div>
@@ -883,9 +883,9 @@
   <div id="toastContainer" class="toast-container" aria-live="polite"></div>
   <div id="roundResultBanner" class="round-result-banner" aria-live="polite"></div>
 
-  <script src="audio.js"></script>
-  <script src="three-engine.js"></script>
-  <script src="threeui-fx.js"></script>
-  <script src="app.js"></script>
+  <script src="audio.js?v=20261119"></script>
+  <script src="three-engine.js?v=20261119"></script>
+  <script src="threeui-fx.js?v=20261119"></script>
+  <script src="app.js?v=20261119"></script>
 </body>
 </html>

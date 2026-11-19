@@ -30,6 +30,7 @@ class Sicbo3DEngine {
     this.isRolling = false;
     this.isAnimatingBowl = false;
     this._bowlOpenedAtTime = 0;
+    this._rollToken = 0;
     this.physicsState = null;
 
     this.isBowlClosed = false;
@@ -824,14 +825,15 @@ class Sicbo3DEngine {
       return { fov: 34, baseY: 11.4, baseZ: 16.0, lookY: 0.4, lookZ: -0.42 };
     }
     // Smoothly widen FOV and pull back + aim slightly below tray center so the 3D bowl & tray
-    // sit cleanly inside the top viewport window on narrow portrait phones without horizontal clipping.
+    // sit cleanly inside the top viewport window (~110px..330px) on narrow portrait phones
+    // without overlapping the betting CTA or clipping horizontally.
     const t = Math.min(1, Math.max(0, (1.0 - aspect) / 0.58));
     return {
-      fov: 34 + t * 14,
-      baseY: 11.4 + t * 3.4,
-      baseZ: 16.0 + t * 6.2,
-      lookY: 0.4 - t * 3.1,
-      lookZ: -0.42 + t * 0.42
+      fov: 34 + t * 13,
+      baseY: 11.4 + t * 3.2,
+      baseZ: 16.0 + t * 7.2,
+      lookY: 0.4 - t * 3.8,
+      lookZ: -0.42 + t * 0.55
     };
   }
 
@@ -911,9 +913,13 @@ class Sicbo3DEngine {
   }
 
   setContainerTouchLock(locked) {
+    const active = Boolean(locked);
     if (this.container) {
-      this.container.style.touchAction = locked ? 'none' : '';
-      this.container.classList.toggle('is-squeezing', Boolean(locked));
+      this.container.style.touchAction = active ? 'none' : '';
+      this.container.classList.toggle('is-squeezing', active);
+    }
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.classList.toggle('is-squeezing-active', active);
     }
   }
 
@@ -1001,9 +1007,13 @@ class Sicbo3DEngine {
   }
 
   shakeAndRoll(targetDice, onShakeSound, onComplete, onBounceSound, isSqueezeMode = false) {
+    this._rollToken = (this._rollToken || 0) + 1;
+    const token = this._rollToken;
+    this.physicsState = null;
     this.isRolling = true;
 
     this.closeBowl(() => {
+      if (token !== this._rollToken) return;
       if (onShakeSound) onShakeSound();
 
       const baseAngles = [0, (Math.PI * 2) / 3, (Math.PI * 4) / 3];
@@ -1036,6 +1046,7 @@ class Sicbo3DEngine {
       });
 
       this.physicsState = {
+        token,
         elapsed: 0,
         agitationEnd: 0.68,
         settleStart: 0.88,
@@ -1052,6 +1063,31 @@ class Sicbo3DEngine {
         onComplete
       };
     }, isSqueezeMode);
+  }
+
+  forceFinishRoll(targetDice, yawSeed = null) {
+    this._rollToken = (this._rollToken || 0) + 1;
+    this.physicsState = null;
+    this.isRolling = false;
+    this.isAnimatingBowl = false;
+    this.isDraggingBowl = false;
+    this.isBowlClosed = false;
+    this.isSqueezeOpaque = false;
+    this.setContainerTouchLock(false);
+    this.bowlOffset = { x: 0, z: 0 };
+    if (this.bowlGroup) {
+      if (typeof gsap !== 'undefined') {
+        gsap.killTweensOf(this.bowlGroup.position);
+        gsap.killTweensOf(this.bowlGroup.rotation);
+      }
+      this.bowlGroup.position.set(0, 6.9, -4.2);
+      this.bowlGroup.rotation.set(-0.38, 0, 0);
+    }
+    this.setBowlOpaqueForSqueeze(false);
+    if (Array.isArray(targetDice) && targetDice.length === 3) {
+      this.setDiceFacesInstant(targetDice, { preserveYaw: false, yawSeed });
+    }
+    this._bowlOpenedAtTime = this.clock ? this.clock.elapsedTime : 0;
   }
 
   stepDicePhysics(dt) {

@@ -327,7 +327,13 @@ function createApp(options = {}) {
   });
 
   // 3. Static Frontend Assets (before /api lazy DB initialization)
-  app.use(express.static(path.join(__dirname, 'public')));
+  app.use(express.static(path.join(__dirname, 'public'), {
+    setHeaders(res, filePath) {
+      if (/\.(html|js|css)$/i.test(filePath)) {
+        res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+      }
+    }
+  }));
 
   // 4. API JSON Body Parser (16kb limit) + Prototype-Key Guard + Lazy Initialization
   const bodyLimit = (options.config && options.config.BODY_LIMIT) || CONSTANTS.BODY_LIMIT;

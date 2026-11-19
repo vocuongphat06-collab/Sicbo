@@ -9,7 +9,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   const LIVE_ROUND_MS = 45000;
-  const LIVE_BET_MS = 40000;
+  const LIVE_BET_MS = 37000;
+  const LIVE_REVEAL_MS = 8000;
   const GUEST_MAX_BALANCE = 2000000;
   const MAX_SINGLE_BET = 1000000000;
 
@@ -89,7 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
     serverTimeOffsetMs: 0,
     liveRoundId: null,
     livePhase: 'BETTING',
-    liveLastSecTick: 40,
+    liveLastSecTick: 37,
     liveIntervalId: null,
     liveRevealedRoundId: null,
     lastRenderedDiceRoundId: null,
@@ -97,9 +98,11 @@ document.addEventListener('DOMContentLoaded', () => {
     liveRoundSeedHash: '',
     liveTicket: null,
     isSyncingLiveReveal: false,
+    lastLiveRevealSyncAt: 0,
     settlingPastRounds: new Set(),
     inFlightOps: new Set(),
     squeezeAutoOpenTimer: null,
+    rollWatchdogTimer: null,
     isRolling: false,
     isSubmittingRoll: false,
     isSqueezeActive: false,
@@ -715,7 +718,6 @@ document.addEventListener('DOMContentLoaded', () => {
       state.balance = 0;
       state.displayedBalance = 0;
       state.liveTicket = null;
-      state.liveRevealedRoundId = null;
       state.personalHistory = [];
       state.walletLedger = [];
       renderPersonalLedger();
@@ -751,10 +753,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function resetClientSessionState({ clearBets = true } = {}) {
+  function resetClientSessionState({ clearBets = true, preserveLiveReveal = false } = {}) {
     state.liveTicket = null;
-    state.liveRevealedRoundId = null;
-    state.pendingResult = null;
+    if (!preserveLiveReveal) {
+      state.liveRevealedRoundId = null;
+      state.pendingResult = null;
+    }
     state.personalHistory = [];
     state.walletLedger = [];
     state.provablyFair.lastRevealed = null;
@@ -1323,7 +1327,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (el.hudModeLabel) el.hudModeLabel.textContent = 'LIVE 45S • VIP 08';
     updateLiveTimerUI();
     startLiveLoop();
-    showStatus('⚡ Phòng Live 45s đồng bộ (40s nhận cược • 5s khóa sổ mở bát).');
+    showStatus('⚡ Phòng Live 45s đồng bộ (37s nhận cược • 8s khóa sổ mở bát).');
   }
 
   if (el.btnModeLive) {
@@ -1537,32 +1541,65 @@ document.addEventListener('DOMContentLoaded', () => {
     state.isRolling = true;
     if (el.btnRoll) el.btnRoll.disabled = true;
     document.querySelectorAll('.bet-spot').forEach(s => s.classList.remove('winner'));
-    const isManualOpen = state.revealMode === 'manual';
-    engine.shakeAndRoll(
+
+    if (typeof document !== 'undefined' && document.hidden) {
+      if (engine && engine.forceFinishRoll) {
+        engine.forceFinishRoll(liveState.dice, liveState.liveRoundId);
+      }
+      finishReveal();
+      return true;
+    }
+
+    const clkNow = getClientLiveClock();
+    const remainRevealMs = (clkNow.liveRoundId === liveState.liveRoundId && clkNow.phase === 'REVEAL')
+      ? clkNow.roundRemainingMs
+      : LIVE_REVEAL_MS;
+    const isManualOpen = state.revealMode === 'manual' && remainRevealMs >= 2600;
+
+    armRollWatchdog(
       liveState.dice,
-      () => sound.playDiceShake(),
-      () => {
-        if (isManualOpen) {
-          state.isSqueezeActive = true;
-          if (el.squeezePrompt) el.squeezePrompt.classList.add('active');
-          if (el.squeezePctLabel) el.squeezePctLabel.textContent = '0%';
-          engine.callbacks.onSqueezeProgress = (progress) => {
-            if (el.squeezePctLabel) el.squeezePctLabel.textContent = `${Math.round(progress * 100)}%`;
-          };
-          engine.callbacks.onBowlOpened = () => finishReveal();
-          clearSqueezeAutoTimer();
-          state.squeezeAutoOpenTimer = setTimeout(() => {
-            if (state.isSqueezeActive) {
-              engine.openBowlQuick(() => finishReveal());
-            }
-          }, 8000);
-        } else {
-          engine.openBowlQuick(() => finishReveal());
-        }
-      },
-      (intensity) => sound.playDiceBounce(intensity),
-      isManualOpen
+      liveState.liveRoundId,
+      isManualOpen ? Math.max(4500, remainRevealMs + 500) : 5200
     );
+
+    try {
+      engine.shakeAndRoll(
+        liveState.dice,
+        () => sound.playDiceShake(),
+        () => {
+          if (isManualOpen) {
+            state.isSqueezeActive = true;
+            if (document.body) document.body.classList.add('is-squeezing-active');
+            if (el.squeezePrompt) el.squeezePrompt.classList.add('active');
+            if (el.squeezePctLabel) el.squeezePctLabel.textContent = '0%';
+            engine.callbacks.onSqueezeProgress = (progress) => {
+              if (el.squeezePctLabel) el.squeezePctLabel.textContent = `${Math.round(progress * 100)}%`;
+            };
+            engine.callbacks.onBowlOpened = () => finishReveal();
+            clearSqueezeAutoTimer();
+            const clkAfterShake = getClientLiveClock();
+            const msLeft = (clkAfterShake.liveRoundId === liveState.liveRoundId && clkAfterShake.phase === 'REVEAL')
+              ? clkAfterShake.roundRemainingMs
+              : 3200;
+            const autoOpenDelay = Math.max(1200, Math.min(5200, msLeft - 850));
+            state.squeezeAutoOpenTimer = setTimeout(() => {
+              if (state.isSqueezeActive) {
+                engine.openBowlQuick(() => finishReveal());
+              }
+            }, autoOpenDelay);
+          } else {
+            engine.openBowlQuick(() => finishReveal());
+          }
+        },
+        (intensity) => sound.playDiceBounce(intensity),
+        isManualOpen
+      );
+    } catch (_) {
+      if (engine && engine.forceFinishRoll) {
+        engine.forceFinishRoll(liveState.dice, liveState.liveRoundId);
+      }
+      finishReveal();
+    }
     return true;
   }
 
@@ -1635,7 +1672,17 @@ document.addEventListener('DOMContentLoaded', () => {
           state.liveLastCommittedHashRoundId = clk.liveRoundId;
           syncLiveStateFromServer(false);
         }
-      } else if (clk.phase === 'REVEAL' && state.liveRevealedRoundId !== clk.liveRoundId && !state.isRolling && !state.isSubmittingRoll && !state.isSqueezeActive && !state.isSyncingLiveReveal) {
+      } else if (
+        clk.phase === 'REVEAL' &&
+        !(typeof document !== 'undefined' && document.hidden) &&
+        state.liveRevealedRoundId !== clk.liveRoundId &&
+        !state.isRolling &&
+        !state.isSubmittingRoll &&
+        !state.isSqueezeActive &&
+        !state.isSyncingLiveReveal &&
+        (Date.now() - state.lastLiveRevealSyncAt) >= 350
+      ) {
+        state.lastLiveRevealSyncAt = Date.now();
         syncLiveStateFromServer(true);
       }
     }, 100);
@@ -1783,7 +1830,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.user = null;
         state.balance = 0;
         state.displayedBalance = 0;
-        resetClientSessionState({ clearBets: !state.isRolling && !state.isSqueezeActive });
+        resetClientSessionState({ clearBets: !state.isRolling && !state.isSqueezeActive, preserveLiveReveal: true });
       }
       if (Array.isArray(data.history) && data.history.length > 0) {
         state.history = data.history;
@@ -2263,6 +2310,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function clearRollWatchdog() {
+    if (state.rollWatchdogTimer) {
+      clearTimeout(state.rollWatchdogTimer);
+      state.rollWatchdogTimer = null;
+    }
+  }
+
+  function armRollWatchdog(dice, roundId, timeoutMs = 5500) {
+    clearRollWatchdog();
+    state.rollWatchdogTimer = setTimeout(() => {
+      state.rollWatchdogTimer = null;
+      if (state.isRolling || state.isSqueezeActive) {
+        if (engine && engine.forceFinishRoll) {
+          engine.forceFinishRoll(dice, roundId);
+        }
+        finishReveal();
+      }
+    }, timeoutMs);
+  }
+
   if (el.btnQuickOpen) {
     el.btnQuickOpen.addEventListener('click', () => {
       if (state.isSqueezeActive) {
@@ -2316,8 +2383,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function finishReveal() {
+    clearRollWatchdog();
     clearSqueezeAutoTimer();
     state.isSqueezeActive = false;
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.classList.remove('is-squeezing-active');
+    }
     if (el.squeezePrompt) el.squeezePrompt.classList.remove('active');
     engine.callbacks.onSqueezeProgress = null;
     engine.callbacks.onBowlOpened = null;
@@ -2897,7 +2968,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
-      updateLiveTimerUI();
+      const clk = updateLiveTimerUI();
+      if (state.isRolling && state.pendingResult && clk.liveRoundId > state.pendingResult.roundId) {
+        if (engine && engine.forceFinishRoll) {
+          engine.forceFinishRoll(state.pendingResult.dice, state.pendingResult.roundId);
+        }
+        finishReveal();
+      }
       syncLiveStateFromServer(false);
       fetchServerState();
     }
