@@ -103,6 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
     isRolling: false,
     isSubmittingRoll: false,
     isSqueezeActive: false,
+    revealMode: 'auto',
     isBalanceTweening: false,
     balanceTween: null,
     pendingResult: null,
@@ -138,6 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnAuthModal: document.getElementById('btnAuthModal'),
     navUserBadge: document.getElementById('navUserBadge'),
     btnOpenAdmin: document.getElementById('btnOpenAdmin'),
+    selectRevealMode: document.getElementById('selectRevealMode'),
     selectGraphicsQuality: document.getElementById('selectGraphicsQuality'),
 
     centerLiveBanner: document.getElementById('centerLiveBanner'),
@@ -528,7 +530,33 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  engine.setBowlOpaqueForSqueeze(false);
+  function applyRevealMode(mode) {
+    const valid = mode === 'manual' ? 'manual' : 'auto';
+    state.revealMode = valid;
+    writePref(LS_KEYS.squeeze, valid === 'manual');
+    if (el.selectRevealMode) el.selectRevealMode.value = valid;
+    if (engine && engine.setBowlOpaqueForSqueeze) {
+      engine.setBowlOpaqueForSqueeze(valid === 'manual' && state.isSqueezeActive);
+    }
+  }
+
+  const savedRevealMode = readPref(LS_KEYS.squeeze, 'false') === 'true' ? 'manual' : 'auto';
+  applyRevealMode(savedRevealMode);
+
+  if (el.selectRevealMode) {
+    el.selectRevealMode.addEventListener('change', () => {
+      sound.playTick();
+      applyRevealMode(el.selectRevealMode.value);
+      const isManual = state.revealMode === 'manual';
+      showToast(
+        isManual
+          ? 'Chế độ Tự kéo bát 3D: Hết giờ cược, giữ & kéo trượt bát để nặn xúc xắc!'
+          : 'Chế độ Tự động mở bát: Bát sẽ tự động mở sau khi lắc xong.',
+        'info',
+        2600
+      );
+    });
+  }
 
   const unlockAudioOnFirstGesture = () => {
     if (sound && sound.enabled && sound.init) {
@@ -1509,12 +1537,31 @@ document.addEventListener('DOMContentLoaded', () => {
     state.isRolling = true;
     if (el.btnRoll) el.btnRoll.disabled = true;
     document.querySelectorAll('.bet-spot').forEach(s => s.classList.remove('winner'));
+    const isManualOpen = state.revealMode === 'manual';
     engine.shakeAndRoll(
       liveState.dice,
       () => sound.playDiceShake(),
-      () => engine.openBowlQuick(() => finishReveal()),
+      () => {
+        if (isManualOpen) {
+          state.isSqueezeActive = true;
+          if (el.squeezePrompt) el.squeezePrompt.classList.add('active');
+          if (el.squeezePctLabel) el.squeezePctLabel.textContent = '0%';
+          engine.callbacks.onSqueezeProgress = (progress) => {
+            if (el.squeezePctLabel) el.squeezePctLabel.textContent = `${Math.round(progress * 100)}%`;
+          };
+          engine.callbacks.onBowlOpened = () => finishReveal();
+          clearSqueezeAutoTimer();
+          state.squeezeAutoOpenTimer = setTimeout(() => {
+            if (state.isSqueezeActive) {
+              engine.openBowlQuick(() => finishReveal());
+            }
+          }, 8000);
+        } else {
+          engine.openBowlQuick(() => finishReveal());
+        }
+      },
       (intensity) => sound.playDiceBounce(intensity),
-      false
+      isManualOpen
     );
     return true;
   }
@@ -2273,6 +2320,7 @@ document.addEventListener('DOMContentLoaded', () => {
     state.isSqueezeActive = false;
     if (el.squeezePrompt) el.squeezePrompt.classList.remove('active');
     engine.callbacks.onSqueezeProgress = null;
+    engine.callbacks.onBowlOpened = null;
 
     const res = state.pendingResult;
     if (!res) {

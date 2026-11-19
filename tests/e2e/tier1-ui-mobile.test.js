@@ -369,12 +369,104 @@ describe('Tier 1 — F8, F9, F10: Frontend Assets, UI Overhaul, Chips, Mobile & 
         }
       }
 
+      assert.ok(extractElementAndAncestors(html, 'selectRevealMode'), '#selectRevealMode must exist in index.html');
+      assert.match(html, /value="auto"/);
+      assert.match(html, /value="manual"/);
       assert.match(threeEngineJs, /computeCameraFraming/);
       assert.match(threeEngineJs, /isAnimatingBowl/);
       assert.match(threeEngineJs, /getClosestQuaternionForFace/);
       assert.match(appJs, /lastRenderedDiceRoundId/);
       assert.match(appJs, /visibilitychange/);
       assert.match(appJs, /pointerdown/);
+    });
+
+    it('F10.7: three-engine.js stepDicePhysics executes all 120 frames (0..1.6s) without ReferenceError and fires onComplete', () => {
+      const vm = require('node:vm');
+      class Vec3 {
+        constructor(x = 0, y = 0, z = 0) { this.x = x; this.y = y; this.z = z; }
+        set(x, y, z) { this.x = x; this.y = y; this.z = z; return this; }
+        copy(v) { this.x = v.x; this.y = v.y; this.z = v.z; return this; }
+        clone() { return new Vec3(this.x, this.y, this.z); }
+        length() { return Math.hypot(this.x, this.y, this.z); }
+        divideScalar(s) { this.x /= s; this.y /= s; this.z /= s; return this; }
+        multiplyScalar(s) { this.x *= s; this.y *= s; this.z *= s; return this; }
+        subVectors(a, b) { this.x = a.x - b.x; this.y = a.y - b.y; this.z = a.z - b.z; return this; }
+        addScaledVector(v, s) { this.x += v.x * s; this.y += v.y * s; this.z += v.z * s; return this; }
+        lerpVectors(a, b, t) {
+          this.x = a.x + (b.x - a.x) * t;
+          this.y = a.y + (b.y - a.y) * t;
+          this.z = a.z + (b.z - a.z) * t;
+          return this;
+        }
+      }
+      class Quat {
+        constructor(x = 0, y = 0, z = 0, w = 1) { this.x = x; this.y = y; this.z = z; this.w = w; }
+        copy(q) { this.x = q.x; this.y = q.y; this.z = q.z; this.w = q.w; return this; }
+        clone() { return new Quat(this.x, this.y, this.z, this.w); }
+        lengthSq() { return this.x * this.x + this.y * this.y + this.z * this.z + this.w * this.w; }
+        normalize() {
+          const l = Math.sqrt(this.lengthSq()) || 1;
+          this.x /= l; this.y /= l; this.z /= l; this.w /= l;
+          return this;
+        }
+        invert() { this.x = -this.x; this.y = -this.y; this.z = -this.z; return this; }
+        setFromAxisAngle(axis, angle) {
+          const s = Math.sin(angle / 2);
+          this.x = axis.x * s; this.y = axis.y * s; this.z = axis.z * s; this.w = Math.cos(angle / 2);
+          return this;
+        }
+        setFromUnitVectors() { return this; }
+        multiply(q) {
+          const ax = this.x, ay = this.y, az = this.z, aw = this.w;
+          this.x = aw * q.x + ax * q.w + ay * q.z - az * q.y;
+          this.y = aw * q.y - ax * q.z + ay * q.w + az * q.x;
+          this.z = aw * q.z + ax * q.y - ay * q.x + az * q.w;
+          this.w = aw * q.w - ax * q.x - ay * q.y - az * q.z;
+          return this;
+        }
+        premultiply(q) { return q.clone().multiply(this); }
+        slerp(qb, t) {
+          this.x += (qb.x - this.x) * t;
+          this.y += (qb.y - this.y) * t;
+          this.z += (qb.z - this.z) * t;
+          this.w += (qb.w - this.w) * t;
+          return this.normalize();
+        }
+      }
+      const ctx = vm.createContext({
+        THREE: { Vector3: Vec3, Quaternion: Quat },
+        performance,
+        Math,
+        gsap: { killTweensOf() {}, to(_t, opts) { if (opts && opts.onComplete) opts.onComplete(); } },
+        window: {},
+      });
+      vm.runInContext(`${threeEngineJs}\nthis.__Sicbo3DEngine = Sicbo3DEngine;`, ctx);
+      const Proto = ctx.__Sicbo3DEngine.prototype;
+      let completed = false;
+      let bounces = 0;
+      const fake = Object.create(Proto);
+      fake.diceSize = 1.24;
+      fake.trayCenter = { x: 0, z: -0.6 };
+      fake.floorY = 1.06;
+      fake.bowlGroup = { position: new Vec3(0, 0.35, -0.6), rotation: new Vec3(0, 0, 0) };
+      fake.diceBodies = [0, 1, 2].map(() => {
+        const pos = new Vec3();
+        return { mesh: { position: pos, quaternion: new Quat(), userData: {} }, pos, vel: new Vec3(), angVel: new Vec3(), lastBounceMs: 0 };
+      });
+      fake.closeBowl = (cb) => { if (cb) cb(); };
+      fake.shakeAndRoll([3, 5, 6], () => {}, () => { completed = true; }, () => { bounces++; }, false);
+      for (let f = 0; f < 120 && fake.physicsState; f++) {
+        fake.stepDicePhysics(0.016);
+      }
+      assert.equal(completed, true, 'stepDicePhysics must finish cleanly and invoke onComplete');
+      assert.equal(fake.isRolling, false);
+      assert.equal(fake.physicsState, null);
+      assert.ok(bounces >= 1, 'Dice physics should trigger at least one bounce sound');
+      for (const b of fake.diceBodies) {
+        assert.equal(b.pos.y, fake.floorY);
+        assert.equal(Number.isFinite(b.pos.x), true);
+        assert.equal(Number.isFinite(b.pos.z), true);
+      }
     });
 
     it('F10.2: three-engine.js uses touchmove { passive: false } and calls preventDefault() while dragging bowl', () => {

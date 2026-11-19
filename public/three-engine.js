@@ -1087,6 +1087,18 @@ class Sicbo3DEngine {
       this.bowlGroup.rotation.z *= 0.7;
     }
 
+    const MAX_WALL_R = 2.48;
+    const MIN_DICE_SEP = this.diceSize * 1.18;
+    const nowMs = (typeof performance !== 'undefined' ? performance : Date).now();
+
+    const triggerClack = (body, impactSpeed) => {
+      if (impactSpeed < 1.2) return;
+      if (nowMs - body.lastBounceMs < 55) return;
+      body.lastBounceMs = nowMs;
+      const intensity = Math.min(1.0, Math.max(0.14, (impactSpeed - 1.0) / 10.0));
+      if (ps.onBounceSound) ps.onBounceSound(intensity);
+    };
+
     const settleStart = ps.settleStart || 0.88;
     const isSettling = t >= settleStart;
 
